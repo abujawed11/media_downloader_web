@@ -45,6 +45,12 @@ def _ydl_opts_for(job: Job):
         "nocheckcertificate": True,
         "cachedir": False,
         "merge_output_format": "mp4",
+        # Performance optimizations for WSL
+        "concurrent_fragments": 8,
+        "fragment_retries": 3,
+        "file_access_retries": 3,
+        "socket_timeout": 30,
+        "retries": 3,
     }
     cookies = _cookies_for(job.url)
     if cookies:

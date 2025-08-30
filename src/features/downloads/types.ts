@@ -1,4 +1,4 @@
-export type Platform = 'youtube' | 'instagram' | 'facebook' | 'twitter' | 'other'
+export type Platform = 'youtube' | 'instagram' | 'facebook' | 'twitter' | 'other' | string
 
 export type JobStatus = 'queued'|'downloading'|'paused'|'merging'|'done'|'error'|'canceled'
 

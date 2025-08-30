@@ -18,6 +18,8 @@ def _cookies_for(url: str) -> Optional[str]:
     return None
 
 def extract_info(url: str) -> Dict:
+    import time
+    start_time = time.time()
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
@@ -28,7 +30,10 @@ def extract_info(url: str) -> Dict:
     if cookies:
         ydl_opts["cookiefile"] = cookies
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        return ydl.extract_info(url, download=False)
+        result = ydl.extract_info(url, download=False)
+        end_time = time.time()
+        print(f"[PERF] yt-dlp extraction took {end_time - start_time:.2f} seconds")
+        return result
 
 def select_thumbnail(meta: Dict) -> Optional[str]:
     if isinstance(meta.get("thumbnail"), str):

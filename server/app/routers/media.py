@@ -30,14 +30,23 @@ def info(body: InfoRequest):
         print(f"[DEBUG] Starting yt-dlp extraction...")
         data = extract_info(str(body.url))
         print(f"[DEBUG] yt-dlp extraction completed successfully")
+        
+        # Check if any formats were found
+        formats = build_formats(data)
+        if not formats:
+            raise HTTPException(status_code=400, detail="No downloadable formats found for this URL")
+        
         return InfoResponse(
             title=data.get("title") or "Untitled",
             thumbnail=select_thumbnail(data),
             duration=(int(data.get("duration")) if data.get("duration") else None),
-            formats=build_formats(data),
+            formats=formats,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        if "Unsupported URL" in error_msg or "No video formats found" in error_msg:
+            raise HTTPException(status_code=400, detail=f"This video site is not supported or the URL contains no downloadable video")
+        raise HTTPException(status_code=400, detail=f"Failed to extract video info: {error_msg}")
 
 
 # ---------- Simple one-shot download (optional; jobs flow is preferred) ----------
