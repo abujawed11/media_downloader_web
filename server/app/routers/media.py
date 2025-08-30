@@ -25,8 +25,11 @@ router = APIRouter(tags=["media"])
 # ---------- Metadata ----------
 @router.post("/info", response_model=InfoResponse)
 def info(body: InfoRequest):
+    print(f"[DEBUG] Received info request for URL: {body.url}")
     try:
+        print(f"[DEBUG] Starting yt-dlp extraction...")
         data = extract_info(str(body.url))
+        print(f"[DEBUG] yt-dlp extraction completed successfully")
         return InfoResponse(
             title=data.get("title") or "Untitled",
             thumbnail=select_thumbnail(data),
