@@ -7,6 +7,7 @@ export interface FormatItem {
     format_string: string;       // ALWAYS present, e.g. "137+140" or "18"
     label: string;
     ext?: string;
+    filesize?: string;           // human readable file size
   }
   
   export interface InfoResponse {

@@ -61,17 +61,25 @@ def _progress_hook(job: Job):
             st = d.get("status")
             if st == "downloading":
                 job.status = "downloading"
+                
+                # Use yt-dlp's reported values directly - they handle multi-stream progress correctly
                 job.downloaded_bytes = int(d.get("downloaded_bytes") or 0)
                 total = d.get("total_bytes") or d.get("total_bytes_estimate")
-                job.total_bytes = int(total) if total else None
-                if job.total_bytes:
+                if total:
+                    job.total_bytes = int(total)
+                
+                # Calculate progress based on current values
+                if job.total_bytes and job.total_bytes > 0:
                     job.progress = max(0.0, min(1.0, job.downloaded_bytes / job.total_bytes))
+                
                 job.speed_bps = d.get("speed") or None
                 job.eta_seconds = int(d.get("eta")) if d.get("eta") is not None else None
                 fn = d.get("filename") or d.get("tmpfilename")
                 if fn: job.filename = fn
             elif st == "finished":
                 job.status = "merging"  # yt-dlp is about to post-process
+                # Don't update size during merge - keep the last download size
+                # The final size will be set after yt-dlp completes
                 fn = d.get("filename")
                 if fn: job.filename = fn
     return hook
@@ -91,6 +99,38 @@ def _run_job(job: Job):
             job.progress = 1.0
             job.speed_bps = 0
             job.eta_seconds = 0
+            
+            # Update final file size from actual downloaded file
+            final_file_found = False
+            
+            # Try the recorded filename first
+            if job.filename and os.path.isfile(job.filename):
+                final_size = os.path.getsize(job.filename)
+                print(f"[DEBUG] Final file found: {job.filename}, Size: {final_size} bytes")
+                job.downloaded_bytes = final_size
+                job.total_bytes = final_size
+                final_file_found = True
+            else:
+                # Search for any video file in the temp directory (merged file)
+                import glob
+                if hasattr(job, 'tmpdir') and job.tmpdir and os.path.isdir(job.tmpdir):
+                    # Look for common video extensions
+                    patterns = ['*.mp4', '*.mkv', '*.webm', '*.avi', '*.mov', '*.m4a', '*.mp3']
+                    for pattern in patterns:
+                        files = glob.glob(os.path.join(job.tmpdir, pattern))
+                        if files:
+                            # Get the largest file (likely the merged result)
+                            largest_file = max(files, key=os.path.getsize)
+                            final_size = os.path.getsize(largest_file)
+                            print(f"[DEBUG] Found merged file: {largest_file}, Size: {final_size} bytes")
+                            job.filename = largest_file
+                            job.downloaded_bytes = final_size
+                            job.total_bytes = final_size
+                            final_file_found = True
+                            break
+                
+                if not final_file_found:
+                    print(f"[DEBUG] Final file not found: {job.filename}, tmpdir: {getattr(job, 'tmpdir', 'None')}")
     except _StopForPause:
         with _LOCK:
             job.status = "paused"

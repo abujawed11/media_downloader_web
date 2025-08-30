@@ -42,6 +42,18 @@ def select_thumbnail(meta: Dict) -> Optional[str]:
     return best.get("url") if best else None
 
 
+def bytes_human(size_bytes: Optional[int]) -> str:
+    """Convert bytes to human readable format"""
+    if not size_bytes:
+        return ""
+    
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}" if size_bytes % 1 else f"{int(size_bytes)} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} TB"
+
+
 def get_height(f: dict) -> Optional[int]:
     """Derive a numeric height from various fields used by different sites."""
     h = f.get("height")
@@ -75,7 +87,7 @@ def build_formats(info: Dict) -> List[Dict]:
     Return clean options for ANY site:
       - Progressive if available
       - Else merged (best video-only + best audio) per height
-      - One best audio at the end
+      - Multiple audio language options when available
     """
     fmts = info.get("formats") or []
 
@@ -85,6 +97,8 @@ def build_formats(info: Dict) -> List[Dict]:
     best_vo_mp4 = {}
     best_vo_webm = {}
 
+    # Track best audio by language
+    best_audio_by_lang = {}  # lang -> {m4a: format, webm: format}
     best_audio_m4a = None
     best_audio_webm = None
 
@@ -96,11 +110,20 @@ def build_formats(info: Dict) -> List[Dict]:
         v   = f.get("vcodec")
         a   = f.get("acodec")
         h   = get_height(f)
-        # Track best audio
+        # Track best audio by language
         if v == "none" and a != "none":
+            lang = f.get("language") or f.get("lang") or "unknown"
+            
+            if lang not in best_audio_by_lang:
+                best_audio_by_lang[lang] = {"m4a": None, "webm": None}
+            
             if ext in ("m4a", "mp4"):
+                if better(f, best_audio_by_lang[lang]["m4a"]): 
+                    best_audio_by_lang[lang]["m4a"] = f
                 if better(f, best_audio_m4a): best_audio_m4a = f
             elif ext in ("webm", "opus"):
+                if better(f, best_audio_by_lang[lang]["webm"]): 
+                    best_audio_by_lang[lang]["webm"] = f
                 if better(f, best_audio_webm): best_audio_webm = f
             continue
 
@@ -149,18 +172,43 @@ def build_formats(info: Dict) -> List[Dict]:
                 "format_string": str(f.get("format_id")),
                 "label": f"{h}p mp4",
                 "ext": "mp4",
+                "filesize": bytes_human(f.get("filesize") or f.get("filesize_approx")),
             })
             continue
         # 2) merged mp4: video-only mp4 + best audio (m4a preferred)
         if h in best_vo_mp4 and (best_audio_m4a or best_audio_webm):
             v = best_vo_mp4[h]
-            a = best_audio_m4a or best_audio_webm
-            out.append({
-                "format_id": None,
-                "format_string": f"{v.get('format_id')}+{a.get('format_id')}",
-                "label": f"{h}p mp4 (merge)",
-                "ext": "mp4",
-            })
+            
+            # If multiple languages available, create options for each
+            if len(best_audio_by_lang) > 1:
+                for lang, audio_formats in best_audio_by_lang.items():
+                    a = audio_formats["m4a"] or audio_formats["webm"]
+                    if a:
+                        lang_label = f" [{lang}]" if lang != "unknown" else ""
+                        # Estimate combined size (video + audio)
+                        v_size = v.get("filesize") or v.get("filesize_approx") or 0
+                        a_size = a.get("filesize") or a.get("filesize_approx") or 0
+                        combined_size = v_size + a_size if v_size and a_size else None
+                        out.append({
+                            "format_id": None,
+                            "format_string": f"{v.get('format_id')}+{a.get('format_id')}",
+                            "label": f"{h}p mp4{lang_label}",
+                            "ext": "mp4",
+                            "filesize": bytes_human(combined_size),
+                        })
+            else:
+                # Single language - use default behavior
+                a = best_audio_m4a or best_audio_webm
+                v_size = v.get("filesize") or v.get("filesize_approx") or 0
+                a_size = a.get("filesize") or a.get("filesize_approx") or 0
+                combined_size = v_size + a_size if v_size and a_size else None
+                out.append({
+                    "format_id": None,
+                    "format_string": f"{v.get('format_id')}+{a.get('format_id')}",
+                    "label": f"{h}p mp4",
+                    "ext": "mp4",
+                    "filesize": bytes_human(combined_size),
+                })
             continue
         # 3) progressive webm
         if h in best_prog_webm:
@@ -170,34 +218,64 @@ def build_formats(info: Dict) -> List[Dict]:
                 "format_string": str(f.get("format_id")),
                 "label": f"{h}p webm",
                 "ext": "webm",
+                "filesize": bytes_human(f.get("filesize") or f.get("filesize_approx")),
             })
             continue
         # 4) merged webm
         if h in best_vo_webm and best_audio_webm:
             v = best_vo_webm[h]
             a = best_audio_webm
+            v_size = v.get("filesize") or v.get("filesize_approx") or 0
+            a_size = a.get("filesize") or a.get("filesize_approx") or 0
+            combined_size = v_size + a_size if v_size and a_size else None
             out.append({
                 "format_id": None,
                 "format_string": f"{v.get('format_id')}+{a.get('format_id')}",
                 "label": f"{h}p webm (merge)",
                 "ext": "webm",
+                "filesize": bytes_human(combined_size),
             })
 
-    # One best audio option at the end
-    if best_audio_m4a:
-        out.append({
-            "format_id": str(best_audio_m4a.get("format_id")),
-            "format_string": str(best_audio_m4a.get("format_id")),
-            "label": "Audio m4a",
-            "ext": "m4a",
-        })
-    elif best_audio_webm:
-        out.append({
-            "format_id": str(best_audio_webm.get("format_id")),
-            "format_string": str(best_audio_webm.get("format_id")),
-            "label": "Audio webm",
-            "ext": "webm",
-        })
+    # Audio-only options for each language
+    if len(best_audio_by_lang) > 1:
+        for lang, audio_formats in best_audio_by_lang.items():
+            lang_label = f" [{lang}]" if lang != "unknown" else ""
+            if audio_formats["m4a"]:
+                f = audio_formats["m4a"]
+                out.append({
+                    "format_id": str(f.get("format_id")),
+                    "format_string": str(f.get("format_id")),
+                    "label": f"Audio m4a{lang_label}",
+                    "ext": "m4a",
+                    "filesize": bytes_human(f.get("filesize") or f.get("filesize_approx")),
+                })
+            elif audio_formats["webm"]:
+                f = audio_formats["webm"]
+                out.append({
+                    "format_id": str(f.get("format_id")),
+                    "format_string": str(f.get("format_id")),
+                    "label": f"Audio webm{lang_label}",
+                    "ext": "webm",
+                    "filesize": bytes_human(f.get("filesize") or f.get("filesize_approx")),
+                })
+    else:
+        # Single language - use default behavior
+        if best_audio_m4a:
+            out.append({
+                "format_id": str(best_audio_m4a.get("format_id")),
+                "format_string": str(best_audio_m4a.get("format_id")),
+                "label": "Audio m4a",
+                "ext": "m4a",
+                "filesize": bytes_human(best_audio_m4a.get("filesize") or best_audio_m4a.get("filesize_approx")),
+            })
+        elif best_audio_webm:
+            out.append({
+                "format_id": str(best_audio_webm.get("format_id")),
+                "format_string": str(best_audio_webm.get("format_id")),
+                "label": "Audio webm",
+                "ext": "webm",
+                "filesize": bytes_human(best_audio_webm.get("filesize") or best_audio_webm.get("filesize_approx")),
+            })
 
     return out
 

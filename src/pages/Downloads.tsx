@@ -16,14 +16,26 @@ export default function Downloads() {
     })()
   }, [setJobs])
 
-  // Poll active jobs
+  // Poll active jobs and recently completed ones
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const active = jobs.filter(j => !['done','error','canceled'].includes(j.status))
-        if (active.length === 0) return
-        await Promise.all(active.map(async j => {
+        // Poll active jobs + jobs that completed in the last 5 seconds (to get final size)
+        const now = Date.now()
+        const jobsToUpdate = jobs.filter(j => {
+          if (!['done','error','canceled'].includes(j.status)) return true
+          // For completed jobs, check if they finished recently (no completion timestamp available, so poll for first 5 updates after completion)
+          if (j.status === 'done') {
+            const updatedRecently = !j._lastPolled || (now - j._lastPolled) < 5000
+            return updatedRecently
+          }
+          return false
+        })
+        
+        if (jobsToUpdate.length === 0) return
+        await Promise.all(jobsToUpdate.map(async j => {
           const fresh = await mediaApi.getJob(j.id)
+          fresh._lastPolled = now
           upsert(fresh)
         }))
       } catch (e) { /* ignore transient */ }

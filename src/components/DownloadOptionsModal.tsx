@@ -4,7 +4,7 @@ import { mediaApi } from '../lib/mediaApi'
 import type { InfoResponse, FormatItem } from '../features/downloads/types'
 import { detectPlatformFromUrl } from '../utils/platform'
 import { useDownloads } from '../features/downloads/downloads.slice'
-// ❌ remove BASE_URL import (not used anymore)
+import { BASE_URL } from '../lib/config'
 
 export default function DownloadOptionsModal() {
   const { subscribe } = useModal()
@@ -66,7 +66,7 @@ export default function DownloadOptionsModal() {
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-      <div className="card w-full max-w-lg p-4">
+      <div className="card w-full max-w-lg max-h-[90vh] flex flex-col p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="text-lg font-semibold">Download Options</div>
           <button className="btn-ghost" onClick={() => setOpen(false)}>Close</button>
@@ -77,12 +77,15 @@ export default function DownloadOptionsModal() {
         {loading && <div className="text-white/80">Fetching formats…</div>}
 
         {!loading && info && (
-          <div className="grid gap-3">
+          <div className="grid gap-3 overflow-y-auto min-h-0">
             {info.thumbnail && (
               <img
-                src={info.thumbnail}
+                src={`${BASE_URL}/proxy-image?url=${encodeURIComponent(info.thumbnail)}`}
                 alt={info.title}
                 className="w-full rounded-xl aspect-video object-cover mb-2"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none'
+                }}
               />
             )}
 
@@ -95,7 +98,10 @@ export default function DownloadOptionsModal() {
                   onClick={() => startDownload(f)}
                   className="btn-primary justify-between"
                 >
-                  <span>{f.label}</span>
+                  <div className="flex flex-col items-start">
+                    <span>{f.label}</span>
+                    {f.filesize && <span className="text-xs opacity-70">{f.filesize}</span>}
+                  </div>
                   <span className="text-sm opacity-80">{f.ext?.toUpperCase()}</span>
                 </button>
               ))}

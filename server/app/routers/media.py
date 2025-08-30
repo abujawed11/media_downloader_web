@@ -1,8 +1,9 @@
 # server/app/routers/media.py
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response
 from urllib.parse import unquote
 import os
+import httpx
 
 from ..models.schemas import (
     InfoRequest,
@@ -152,3 +153,23 @@ def jobs_file(job_id: str):
         media_type="application/octet-stream",
         filename=os.path.basename(path),
     )
+
+
+# ---------- Image Proxy ----------
+@router.get("/proxy-image")
+async def proxy_image(url: str):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            
+            return Response(
+                content=response.content,
+                media_type=response.headers.get("content-type", "image/jpeg"),
+                headers={
+                    "Cache-Control": "public, max-age=3600",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to proxy image: {str(e)}")
