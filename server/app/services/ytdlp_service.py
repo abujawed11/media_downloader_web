@@ -339,7 +339,7 @@ def _cookies_for(url: str) -> Optional[str]:
     for name, keys in {
         "youtube.txt":   ["youtube.com", "youtu.be"],
         "instagram.txt": ["instagram.com"],
-        "facebook.txt":  ["facebook.com", "fb.watch"],
+        "facebook.txt":  ["facebook.com", "fb.watch", "facebook.com/share"],
         "twitter.txt":   ["twitter.com", "x.com"],
     }.items():
         if any(k in u for k in keys):
@@ -391,19 +391,28 @@ def _base_ydl_opts(skip_download: bool = True, url: str = None) -> Dict:
         "playlist_items": "1",
 
         # Networking robustness:
-        "socket_timeout": 15,
-        "retries": 2,
+        "socket_timeout": 30,  # Increased for Facebook
+        "retries": 3,          # Increased for Facebook
         "source_address": "0.0.0.0",   # prefer IPv4 paths
 
-        # Helpful UA:
-        "http_headers": {"User-Agent": "Mozilla/5.0"},
-        # For YouTube, you could also pin a client if needed:
-        # "extractor_args": {"youtube": {"player_client": ["web"]}},
+        # Better User-Agent for Facebook:
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
     }
     
-    # Browser cookie extraction is commented out for headless servers
-    # if url and ("youtube.com" in url.lower() or "youtu.be" in url.lower()):
-    #     opts["cookies_from_browser"] = ("firefox",)  # Try firefox first, fallback to chrome
+    # Facebook-specific configuration
+    if url and "facebook.com" in url.lower():
+        opts.update({
+            # Facebook needs these for new URL formats
+            "extractor_args": {
+                "facebook": {
+                    "api_version": "v17.0",
+                }
+            },
+            "socket_timeout": 45,  # Facebook can be slow
+            "retries": 5,
+        })
     
     return opts
 
