@@ -15,7 +15,6 @@
 
 import { Outlet } from 'react-router-dom'
 import Header from './components/Header'
-import FloatingBubble from './components/FloatingBubble'
 import DownloadOptionsModal from './components/DownloadOptionsModal'
 
 export default function App() {
@@ -28,9 +27,6 @@ export default function App() {
 
       {/* Modals live at root */}
       <DownloadOptionsModal />
-
-      {/* Floating quick-action */}
-      <FloatingBubble />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { mediaApi } from '../lib/mediaApi'
 import { useDownloads } from '../features/downloads/downloads.slice'
 import type { DownloadJobDTO } from '../features/downloads/types'
@@ -21,7 +21,7 @@ export default function Downloads() {
     const timer = setInterval(async () => {
       try {
         // Poll active jobs + jobs that completed in the last 5 seconds (to get final size)
-        const now = Date.now()
+        // const now = Date.now()
         // const jobsToUpdate = jobs.filter(j => {
         //   if (!['done','error','canceled'].includes(j.status)) return true
         //   // For completed jobs, check if they finished recently (no completion timestamp available, so poll for first 5 updates after completion)
