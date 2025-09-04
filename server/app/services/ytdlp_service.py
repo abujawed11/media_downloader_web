@@ -401,9 +401,9 @@ def _base_ydl_opts(skip_download: bool = True, url: str = None) -> Dict:
         # "extractor_args": {"youtube": {"player_client": ["web"]}},
     }
     
-    # Add browser cookie extraction for YouTube to handle bot detection
-    if url and ("youtube.com" in url.lower() or "youtu.be" in url.lower()):
-        opts["cookies_from_browser"] = ("firefox",)  # Try firefox first, fallback to chrome
+    # Browser cookie extraction is commented out for headless servers
+    # if url and ("youtube.com" in url.lower() or "youtu.be" in url.lower()):
+    #     opts["cookies_from_browser"] = ("firefox",)  # Try firefox first, fallback to chrome
     
     return opts
 
