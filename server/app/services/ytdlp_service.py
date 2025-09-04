@@ -373,14 +373,14 @@ def _normalize_youtube_url(url: str) -> str:
 
 # --------------------------- Common yt-dlp options ---------------------------
 
-def _base_ydl_opts(skip_download: bool = True) -> Dict:
+def _base_ydl_opts(skip_download: bool = True, url: str = None) -> Dict:
     """
     Reasonable defaults that:
       - avoid playlist enumeration
       - reduce stalls/timeouts in VMs/Wi-Fi
       - behave better against throttling
     """
-    return {
+    opts = {
         "quiet": True,
         "skip_download": skip_download,
         "nocheckcertificate": True,
@@ -400,6 +400,12 @@ def _base_ydl_opts(skip_download: bool = True) -> Dict:
         # For YouTube, you could also pin a client if needed:
         # "extractor_args": {"youtube": {"player_client": ["web"]}},
     }
+    
+    # Add browser cookie extraction for YouTube to handle bot detection
+    if url and ("youtube.com" in url.lower() or "youtu.be" in url.lower()):
+        opts["cookies_from_browser"] = ("firefox",)  # Try firefox first, fallback to chrome
+    
+    return opts
 
 
 # --------------------------- Public API ---------------------------
@@ -414,7 +420,7 @@ def extract_info(url: str) -> Dict:
     # Normalize YT URLs so &list=... doesn't slow things down
     url = _normalize_youtube_url(url)
 
-    ydl_opts = _base_ydl_opts(skip_download=True)
+    ydl_opts = _base_ydl_opts(skip_download=True, url=url)
     cookies = _cookies_for(url)
     if cookies:
         ydl_opts["cookiefile"] = cookies
@@ -525,7 +531,7 @@ def download_to_temp(url: str, format_string: str) -> str:
     url = _normalize_youtube_url(url)
 
     def run_with_format(fmt_expr: str) -> Optional[str]:
-        ydl_opts = _base_ydl_opts(skip_download=False)
+        ydl_opts = _base_ydl_opts(skip_download=False, url=url)
         ydl_opts.update({
             "format": fmt_expr,
             "outtmpl": outtmpl,
