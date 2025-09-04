@@ -5,6 +5,7 @@ from typing import Dict, Optional
 import yt_dlp
 
 from .ytdlp_service import _cookies_for  # reuse your cookies helper
+from .ytdlp_service import _normalize_youtube_url  # normalize YT watch URLs to single video
 
 @dataclass
 class Job:
@@ -45,6 +46,9 @@ def _ydl_opts_for(job: Job):
         "nocheckcertificate": True,
         "cachedir": False,
         "merge_output_format": "mp4",
+        # Ensure we don't enumerate entire playlists when a watch URL has &list=
+        "noplaylist": True,
+        "playlist_items": "1",
         # Performance optimizations for WSL
         "concurrent_fragments": 8,
         "fragment_retries": 3,
@@ -94,8 +98,10 @@ def _run_job(job: Job):
     try:
         ydl_opts = _ydl_opts_for(job)
         ydl_opts["progress_hooks"] = [_progress_hook(job)]
+        # Normalize YouTube URLs so a watch URL with playlist params doesn't trigger full playlist
+        url = _normalize_youtube_url(job.url)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(job.url, download=True)
+            info = ydl.extract_info(url, download=True)
             # best guess at final filename
             if isinstance(info, dict):
                 fn = info.get("_filename") or job.filename
