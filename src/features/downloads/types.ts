@@ -46,5 +46,6 @@ export interface DownloadJobDTO {
     // optional UI-only fields if you add them
     label?: string
     platform?: string
+    completedAt?: number
   }
 

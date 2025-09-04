@@ -22,20 +22,30 @@ export default function Downloads() {
       try {
         // Poll active jobs + jobs that completed in the last 5 seconds (to get final size)
         const now = Date.now()
+        // const jobsToUpdate = jobs.filter(j => {
+        //   if (!['done','error','canceled'].includes(j.status)) return true
+        //   // For completed jobs, check if they finished recently (no completion timestamp available, so poll for first 5 updates after completion)
+        //   if (j.status === 'done') {
+        //     const updatedRecently = !j._lastPolled || (now - j._lastPolled) < 5000
+        //     return updatedRecently
+        //   }
+        //   return false
+        // })
+
         const jobsToUpdate = jobs.filter(j => {
-          if (!['done','error','canceled'].includes(j.status)) return true
-          // For completed jobs, check if they finished recently (no completion timestamp available, so poll for first 5 updates after completion)
+          if (!['done', 'error', 'canceled'].includes(j.status)) return true;
           if (j.status === 'done') {
-            const updatedRecently = !j._lastPolled || (now - j._lastPolled) < 5000
-            return updatedRecently
+            // poll only for 5s after first completion
+            const cutoff = (j.completedAt ?? 0) + 5000;
+            return Date.now() < cutoff;
           }
-          return false
-        })
-        
+          return false;
+        });
+
         if (jobsToUpdate.length === 0) return
         await Promise.all(jobsToUpdate.map(async j => {
           const fresh = await mediaApi.getJob(j.id)
-          fresh._lastPolled = now
+          // fresh._lastPolled = now
           upsert(fresh)
         }))
       } catch (e) { /* ignore transient */ }
@@ -59,16 +69,16 @@ function JobRow({ job }: { job: DownloadJobDTO }) {
   const upsert = useDownloads(s => s.upsertJob)
   const pct = Math.round((job.progress || 0) * 100)
 
-  async function pause()  { upsert(await mediaApi.pauseJob(job.id)) }
+  async function pause() { upsert(await mediaApi.pauseJob(job.id)) }
   async function resume() { upsert(await mediaApi.resumeJob(job.id)) }
   async function cancel() { upsert(await mediaApi.cancelJob(job.id)) }
 
   const fileHref = useMemo(() => mediaApi.fileUrl(job.id), [job.id])
 
-  const canPause   = job.status === 'downloading'
-  const canResume  = job.status === 'paused' || job.status === 'error'
-  const canCancel  = ['queued','downloading','paused','merging'].includes(job.status)
-  const canOpen    = job.status === 'done'
+  const canPause = job.status === 'downloading'
+  const canResume = job.status === 'paused' || job.status === 'error'
+  const canCancel = ['queued', 'downloading', 'paused', 'merging'].includes(job.status)
+  const canOpen = job.status === 'done'
 
   return (
     <div className="card p-4">

@@ -20,17 +20,35 @@ export const useDownloads = create<State & Actions>((set) => ({
   jobs: [],
 
   upsertJob: (job) =>
+    // inside upsertJob
     set((s) => {
-      const i = s.jobs.findIndex((j) => j.id === job.id)
+      const i = s.jobs.findIndex((j) => j.id === job.id);
       if (i === -1) {
-        // newest first
-        return { jobs: [job, ...s.jobs] }
+        const completedAt = job.status === 'done' ? Date.now() : undefined;
+        return { jobs: [{ ...job, completedAt }, ...s.jobs] };
       }
-      const next = s.jobs.slice()
-      // merge so we don’t lose client-only fields like label/platform
-      next[i] = { ...next[i], ...job }
-      return { jobs: next }
+      const prev = s.jobs[i];
+      const becameDone = prev.status !== 'done' && job.status === 'done';
+      const next = s.jobs.slice();
+      next[i] = {
+        ...prev,
+        ...job,
+        ...(becameDone ? { completedAt: Date.now() } : {}),
+      };
+      return { jobs: next };
     }),
+
+  // set((s) => {
+  //   const i = s.jobs.findIndex((j) => j.id === job.id)
+  //   if (i === -1) {
+  //     // newest first
+  //     return { jobs: [job, ...s.jobs] }
+  //   }
+  //   const next = s.jobs.slice()
+  //   // merge so we don’t lose client-only fields like label/platform
+  //   next[i] = { ...next[i], ...job }
+  //   return { jobs: next }
+  // }),
 
   setJobs: (jobs) => set({ jobs }),
 

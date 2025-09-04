@@ -1,21 +1,55 @@
 @import "tailwindcss";
 
-/* Define the base “btn” using utilities */
+/* Define the base "btn" using regular CSS */
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 font-medium transition;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 1rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s;
   }
 
-  /* Define variants by applying utilities directly (don’t @apply .btn) */
+  /* Define variants using regular CSS */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 font-medium transition bg-yellow-400 text-black hover:brightness-95;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 1rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    background-color: #fbbf24;
+    color: #000000;
+  }
+  .btn-primary:hover {
+    filter: brightness(0.95);
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 font-medium transition bg-transparent text-yellow-400 hover:bg-white/10;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 1rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    background-color: transparent;
+    color: #fbbf24;
+  }
+  .btn-ghost:hover {
+    background-color: rgba(255, 255, 255, 0.1);
   }
 
   .card {
-    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
   }
 }
