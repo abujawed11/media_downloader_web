@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\app\\services/**)",
+      "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\app\\routers/**)",
+      "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\cookies/**)",
+      "WebSearch",
+      "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\cookies/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
