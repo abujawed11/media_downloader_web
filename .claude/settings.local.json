@@ -16,7 +16,8 @@
       "Bash(docker-compose restart:*)",
       "Bash(chmod:*)",
       "Bash(docker-compose:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

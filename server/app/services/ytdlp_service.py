@@ -658,16 +658,71 @@ def build_formats(info: Dict) -> List[Dict]:
     """
     fmts = info.get("formats") or []
 
+    # Debug logging
+    print(f"[DEBUG] Total formats available: {len(fmts)}")
+
     # Collect available heights (from formats with video)
     heights = set()
+    has_video = False
+    has_audio = False
+
     for f in fmts:
-        if (f.get("vcodec") or "none") != "none":
+        vcodec = f.get("vcodec") or "none"
+        acodec = f.get("acodec") or "none"
+
+        if vcodec != "none":
+            has_video = True
             h = get_height(f)
             if isinstance(h, int):
                 heights.add(h)
+            else:
+                # Try to get height from format_note or format_id
+                format_note = str(f.get("format_note") or "").lower()
+                format_id = str(f.get("format_id") or "")
+
+                # Check for common resolution indicators
+                for res in [2160, 1440, 1080, 720, 480, 360, 240, 144]:
+                    if f"{res}p" in format_note or f"{res}" in format_note or f"{res}" in format_id:
+                        heights.add(res)
+                        break
+
+        if acodec != "none":
+            has_audio = True
+
+    print(f"[DEBUG] Has video: {has_video}, Has audio: {has_audio}")
+    print(f"[DEBUG] Detected heights: {sorted(heights)}")
+
+    if not heights and has_video:
+        # We have video formats but couldn't detect heights
+        # Fall back to generic format selectors
+        print("[DEBUG] Video detected but no heights found, using generic selectors")
+        return [
+            {
+                "format_id": None,
+                "format_string": "best[ext=mp4][vcodec!*=none]/best[vcodec!*=none]",
+                "label": "Best quality (mp4)",
+                "ext": "mp4",
+                "filesize": "",
+            },
+            {
+                "format_id": None,
+                "format_string": "(bv*[ext=mp4]+ba[ext=m4a])/(bv*+ba)/best",
+                "label": "Best video+audio (merged)",
+                "ext": "mp4",
+                "filesize": "",
+            },
+            {
+                "format_id": None,
+                "format_string": "bestaudio[ext=m4a]/bestaudio",
+                "label": "Audio only (best)",
+                "ext": "m4a",
+                "filesize": "",
+            },
+        ]
 
     if not heights:
         # audio-only case
+        print("[DEBUG] No video formats found, audio-only content")
         out_audio = []
         best_audio = None
         for f in fmts:
@@ -684,28 +739,44 @@ def build_formats(info: Dict) -> List[Dict]:
             })
         return out_audio
 
-    heights = sorted(heights)  # ascending
+    heights = sorted(heights, reverse=True)  # descending (highest first)
     out: List[Dict] = []
 
-    # We’ll generate choices for a few top heights only to keep UI tidy
-    candidate_heights = []
-    for target in (4320, 2160, 1440, 1080, 720, 480, 360, 240):
-        ok = [h for h in heights if h <= target]
-        if ok:
-            candidate_heights.append(max(ok))
-    # dedupe but keep order as per the list above
-    seen = set()
-    ordered_heights = []
-    for h in (4320, 2160, 1440, 1080, 720, 480, 360, 240):
-        if h in candidate_heights and h not in seen:
-            seen.add(h)
-            ordered_heights.append(h)
+    # Map actual heights to standard resolutions for labeling
+    # But use actual heights for filtering
+    def get_standard_label(h: int) -> str:
+        """Map actual height to nearest standard resolution label."""
+        # Handle both standard (1080, 720, 480) and non-standard (1920, 1280, 640) heights
+        if h >= 2000:
+            return "4K"      # 2160p+
+        elif h >= 1400:
+            return "1440p"   # 1440-1999 (2K)
+        elif h >= 1000:
+            return "1080p"   # 1000-1399 (catches both 1080 and 1920)
+        elif h >= 700:
+            return "720p"    # 700-999 (catches both 720 and 1280, 960)
+        elif h >= 450:
+            return "480p"    # 450-699 (catches both 480 and 640)
+        elif h >= 300:
+            return "360p"    # 300-449 (catches both 360 and 428, 320)
+        elif h >= 200:
+            return "240p"    # 200-299 (catches both 240 and 214)
+        elif h >= 100:
+            return "144p"    # 100-199 (catches both 144 and 128)
+        else:
+            return f"{h}p"   # <100
+
+    # Use all detected heights, but limit to top 6 to keep UI clean
+    ordered_heights = heights[:6] if len(heights) > 6 else heights
+
+    print(f"[DEBUG] Using heights for format generation: {ordered_heights}")
 
     # Expression helpers
     def label_for(h: int, ext="mp4", merged=False):
+        label = get_standard_label(h)
         if merged:
-            return f"{h}p {ext} (merge)"
-        return f"{h}p {ext}"
+            return f"{label} {ext} (merge)"
+        return f"{label} {ext}"
 
     for h in ordered_heights:
         # Progressive mp4 first (best <= h)
@@ -747,6 +818,18 @@ def build_formats(info: Dict) -> List[Dict]:
         "filesize": "",
     })
 
+    # Safety check: if we somehow ended up with no formats, add a fallback
+    if not out:
+        print("[WARN] No formats generated, adding fallback 'best' option")
+        out.append({
+            "format_id": None,
+            "format_string": "best",
+            "label": "Best available",
+            "ext": "mp4",
+            "filesize": "",
+        })
+
+    print(f"[DEBUG] Generated {len(out)} format options")
     return out
 
 # def build_formats(info: Dict) -> List[Dict]:
