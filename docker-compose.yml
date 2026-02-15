@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # Redis - Job Queue & Cache
+  redis:
+    image: redis:7-alpine
+    container_name: media-downloader-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - media-network
+
+  # FastAPI Backend
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: media-downloader-api
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - ./server/.env
+    volumes:
+      - ./server:/app
+      - downloads:/app/downloads
+      - ./server/cookies:/app/cookies
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - media-network
+
+  # Celery Worker - Download Processor
+  worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: media-downloader-worker
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - ./server/.env
+    volumes:
+      - ./server:/app
+      - downloads:/app/downloads
+      - ./server/cookies:/app/cookies
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=4
+    networks:
+      - media-network
+
+  # Celery Flower - Monitoring Dashboard (Optional)
+  flower:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: media-downloader-flower
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - ./server/.env
+    depends_on:
+      - redis
+      - worker
+    command: celery -A app.celery_app flower --port=5555
+    networks:
+      - media-network
+
+volumes:
+  redis_data:
+  downloads:
+
+networks:
+  media-network:
+    driver: bridge

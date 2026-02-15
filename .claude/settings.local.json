@@ -5,7 +5,13 @@
       "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\app\\routers/**)",
       "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\cookies/**)",
       "WebSearch",
-      "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\cookies/**)"
+      "Read(/D:\\Abu\\react_app\\mediadownloader_web\\server\\cookies/**)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose up:*)"
     ],
     "deny": [],
     "ask": []

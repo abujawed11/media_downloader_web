@@ -49,12 +49,15 @@ def _ydl_opts_for(job: Job):
         # Ensure we don't enumerate entire playlists when a watch URL has &list=
         "noplaylist": True,
         "playlist_items": "1",
-        # Performance optimizations for WSL
-        "concurrent_fragments": 8,
-        "fragment_retries": 3,
-        "file_access_retries": 3,
-        "socket_timeout": 30,
-        "retries": 3,
+        # Performance optimizations
+        "concurrent_fragments": 16,        # Increased from 8 to 16 for faster parallel downloads
+        "fragment_retries": 10,            # More retries for unstable connections
+        "file_access_retries": 10,
+        "socket_timeout": 60,              # Longer timeout for large files
+        "retries": 10,                     # More retries for reliability
+        "http_chunk_size": 10485760,       # 10MB chunks for better throughput
+        "buffersize": 8192,                # Larger buffer size
+        "throttledratelimit": None,        # No rate limit (use full bandwidth)
     }
     cookies = _cookies_for(job.url)
     if cookies:

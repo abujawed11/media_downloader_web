@@ -17,7 +17,7 @@ from ..services.ytdlp_service import (
     download_to_temp,
     select_thumbnail,
 )
-from ..services import job_manager as jm
+from ..services import hybrid_job_manager as jm
 
 router = APIRouter(tags=["media"])
 
