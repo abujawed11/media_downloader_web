@@ -2,15 +2,31 @@
 import os
 import tempfile
 import shutil
+import time
 from typing import Optional
 import yt_dlp
+import redis
 from celery import Task
 from celery.utils.log import get_task_logger
 
 from .celery_app import celery_app
 from .services.ytdlp_service import _cookies_for, _normalize_youtube_url
+from .config import settings
 
 logger = get_task_logger(__name__)
+
+# Redis client for checking pause/cancel flags
+redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+class TaskPausedException(Exception):
+    """Exception raised when task is paused."""
+    pass
+
+
+class TaskCanceledException(Exception):
+    """Exception raised when task is canceled."""
+    pass
 
 
 class DownloadTask(Task):
@@ -89,6 +105,18 @@ def download_media(
 
         # Progress hook to update task state
         def progress_hook(d):
+            # Check for pause/cancel flags in Redis
+            pause_key = f"job:{task_id}:pause"
+            cancel_key = f"job:{task_id}:cancel"
+
+            if redis_client.exists(cancel_key):
+                logger.info(f"Task {task_id}: Cancel requested")
+                raise TaskCanceledException("Task canceled by user")
+
+            if redis_client.exists(pause_key):
+                logger.info(f"Task {task_id}: Pause requested")
+                raise TaskPausedException("Task paused by user")
+
             if d['status'] == 'downloading':
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
@@ -151,6 +179,8 @@ def download_media(
             file_size = os.path.getsize(filename)
 
             logger.info(f"Task {task_id}: Download complete - {filename} ({file_size} bytes)")
+            logger.info(f"Task {task_id}: File location - {filename}")
+            logger.info(f"Task {task_id}: Temp directory - {tmpdir}")
 
             return {
                 'status': 'done',
@@ -160,6 +190,33 @@ def download_media(
                 'ext': ext or os.path.splitext(filename)[1].lstrip('.'),
                 'file_size': file_size,
             }
+
+    except TaskPausedException:
+        logger.info(f"Task {task_id}: Paused")
+        # Don't clean up temp files on pause (for resume)
+        # Store pause state in Redis
+        from .config import settings
+        redis_client.hset(f"job:{task_id}", mapping={
+            'paused_tmpdir': tmpdir,
+            'paused_at': str(time.time())
+        })
+
+        # Revoke the task to stop it completely
+        self.request.id
+        logger.info(f"Task {task_id}: Task paused, temp files preserved at {tmpdir}")
+
+        # Re-raise to mark task as failed with a specific message
+        # This prevents Celery from marking it as SUCCESS
+        raise Exception("Task paused by user")
+
+    except TaskCanceledException:
+        logger.info(f"Task {task_id}: Canceled")
+        # Clean up on cancel
+        try:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        except:
+            pass
+        raise
 
     except Exception as e:
         logger.error(f"Task {task_id} failed: {str(e)}")

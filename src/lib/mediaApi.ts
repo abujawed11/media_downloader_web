@@ -82,6 +82,14 @@ export const mediaApi = {
         const { data } = await api.get('/jobs')
         return z.array(JobSchema).parse(data)
     },
+    async deleteJob(id: string, deleteFile = false) {
+        const { data } = await api.delete(`/jobs/${id}?delete_file=${deleteFile}`)
+        return data
+    },
+    async clearAllJobs(deleteFiles = false) {
+        const { data } = await api.delete(`/jobs?delete_files=${deleteFiles}`)
+        return data
+    },
     fileUrl(id: string) {
         // Use this href to download final file
         return `${api.defaults.baseURL}/jobs/${id}/file`

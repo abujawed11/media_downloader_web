@@ -6,6 +6,14 @@ import yt_dlp
 
 from .ytdlp_service import _cookies_for  # reuse your cookies helper
 from .ytdlp_service import _normalize_youtube_url  # normalize YT watch URLs to single video
+from ..config import settings
+
+# Use persistent downloads directory from config or fallback to ./downloads
+# Convert to absolute path to handle both Docker and local environments
+DOWNLOADS_DIR = os.path.abspath(getattr(settings, 'YTDLP_OUTPUT_PATH', './downloads'))
+# Ensure the directory exists
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+print(f"[INFO] Job manager using downloads directory: {DOWNLOADS_DIR}")
 
 @dataclass
 class Job:
@@ -21,12 +29,17 @@ class Job:
     speed_bps: Optional[float] = None
     eta_seconds: Optional[int] = None
     filename: Optional[str] = None
-    tmpdir: str = field(default_factory=lambda: tempfile.mkdtemp(prefix="mdjob_"))
+    tmpdir: str = field(default_factory=lambda: "")  # Will be set in __post_init__
     error: Optional[str] = None
 
     # control flags
     _pause_req: bool = False
     _cancel_req: bool = False
+
+    def __post_init__(self):
+        """Create tmpdir in persistent downloads directory."""
+        if not self.tmpdir:
+            self.tmpdir = tempfile.mkdtemp(prefix=f"mdjob_{self.id}_", dir=DOWNLOADS_DIR)
 
 # in-memory store
 _JOBS: Dict[str, Job] = {}
@@ -166,6 +179,7 @@ def start_job(url: str, format_string: str, title: Optional[str]=None, ext: Opti
     job = Job(id=str(uuid.uuid4()), url=url, format_string=format_string, title=title, ext=ext)
     with _LOCK:
         _JOBS[job.id] = job
+    print(f"[DEBUG] Starting job {job.id} - Download directory: {job.tmpdir}")
     t = threading.Thread(target=_run_job, args=(job,), daemon=True)
     t.start()
     return job
@@ -200,3 +214,11 @@ def get_job(job_id: str) -> Job:
 
 def list_jobs():
     with _LOCK: return list(_JOBS.values())
+
+def delete_job(job_id: str) -> None:
+    """Delete a job from the in-memory store."""
+    with _LOCK:
+        if job_id in _JOBS:
+            del _JOBS[job_id]
+        else:
+            raise KeyError(f"Job {job_id} not found")

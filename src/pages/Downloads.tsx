@@ -53,9 +53,43 @@ export default function Downloads() {
     return () => clearInterval(timer)
   }, [jobs, upsert])
 
+  // Clear all completed/error jobs
+  const clearAllHistory = async () => {
+    const completedJobs = jobs.filter(j => j.status === 'done' || j.status === 'error')
+    if (completedJobs.length === 0) return
+
+    const confirmed = window.confirm(
+      `Clear ${completedJobs.length} completed/error downloads from history?\n\n(Files will not be deleted)`
+    )
+    if (!confirmed) return
+
+    try {
+      await mediaApi.clearAllJobs(false)
+      // Remove all completed/error jobs from UI
+      const removeJob = useDownloads.getState().removeJob
+      completedJobs.forEach(j => removeJob(j.id))
+    } catch (e) {
+      console.error('Failed to clear history:', e)
+      alert('Failed to clear history')
+    }
+  }
+
+  const hasCompletedJobs = jobs.some(j => j.status === 'done' || j.status === 'error')
+
   return (
     <div className="grid gap-4">
-      <h2 className="text-2xl font-semibold">Downloads</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold">Downloads</h2>
+        {hasCompletedJobs && (
+          <button
+            onClick={clearAllHistory}
+            className="btn-ghost text-sm"
+            title="Clear all completed/error downloads from history"
+          >
+            🗑️ Clear History
+          </button>
+        )}
+      </div>
       {jobs.length === 0 ? (
         <p className="text-white/60">No downloads yet.</p>
       ) : (
@@ -67,11 +101,21 @@ export default function Downloads() {
 
 function JobRow({ job }: { job: DownloadJobDTO }) {
   const upsert = useDownloads(s => s.upsertJob)
+  const removeJob = useDownloads(s => s.removeJob)
   const pct = Math.round((job.progress || 0) * 100)
 
   async function pause() { upsert(await mediaApi.pauseJob(job.id)) }
   async function resume() { upsert(await mediaApi.resumeJob(job.id)) }
   async function cancel() { upsert(await mediaApi.cancelJob(job.id)) }
+
+  async function remove() {
+    try {
+      await mediaApi.deleteJob(job.id, false) // Don't delete file
+      removeJob(job.id) // Remove from UI
+    } catch (e) {
+      console.error('Failed to remove job:', e)
+    }
+  }
 
   const fileHref = useMemo(() => mediaApi.fileUrl(job.id), [job.id])
 
@@ -79,6 +123,7 @@ function JobRow({ job }: { job: DownloadJobDTO }) {
   const canResume = job.status === 'paused' || job.status === 'error'
   const canCancel = ['queued', 'downloading', 'paused', 'merging'].includes(job.status)
   const canOpen = job.status === 'done'
+  const canRemove = job.status === 'done' || job.status === 'error' || job.status === 'canceled'
 
   return (
     <div className="card p-4">
@@ -100,6 +145,15 @@ function JobRow({ job }: { job: DownloadJobDTO }) {
             <a className="btn-primary" href={fileHref} target="_blank" rel="noreferrer">
               Open
             </a>
+          )}
+          {canRemove && (
+            <button
+              className="btn-ghost text-white/40 hover:text-white/80"
+              onClick={remove}
+              title="Remove from history"
+            >
+              ❌
+            </button>
           )}
         </div>
       </div>

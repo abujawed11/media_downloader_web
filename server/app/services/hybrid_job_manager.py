@@ -29,6 +29,7 @@ if USE_CELERY:
         cancel_job,
         get_job,
         list_jobs,
+        delete_job,
         Job,
     )
 else:
@@ -40,6 +41,7 @@ else:
         cancel_job,
         get_job,
         list_jobs,
+        delete_job,
         Job,
     )
 
@@ -51,5 +53,6 @@ __all__ = [
     "cancel_job",
     "get_job",
     "list_jobs",
+    "delete_job",
     "Job",
 ]

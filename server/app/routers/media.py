@@ -134,6 +134,66 @@ def jobs_list():
     return [JobResponse(**_job_json(j)) for j in jm.list_jobs()]
 
 
+@router.delete("/jobs/{job_id}")
+def jobs_delete(job_id: str, delete_file: bool = False):
+    """Delete a job from history (and optionally delete the downloaded file)."""
+    try:
+        job = jm.get_job(job_id)
+
+        # Optionally delete the downloaded file
+        if delete_file and job.status == "done":
+            import shutil
+            tmpdir = getattr(job, "tmpdir", None)
+            if tmpdir and os.path.isdir(tmpdir):
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                print(f"[INFO] Deleted files for job {job_id}")
+
+        # Delete job from manager
+        jm.delete_job(job_id)
+
+        return {"status": "deleted", "job_id": job_id, "file_deleted": delete_file}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+
+@router.delete("/jobs")
+def jobs_clear_all(delete_files: bool = False):
+    """Clear all jobs from history (and optionally delete all downloaded files)."""
+    try:
+        jobs = jm.list_jobs()
+        deleted_count = 0
+        files_deleted_count = 0
+
+        for job in jobs:
+            # Optionally delete files
+            if delete_files and job.status == "done":
+                import shutil
+                tmpdir = getattr(job, "tmpdir", None)
+                if tmpdir and os.path.isdir(tmpdir):
+                    try:
+                        shutil.rmtree(tmpdir, ignore_errors=True)
+                        files_deleted_count += 1
+                    except:
+                        pass
+
+            # Delete job
+            try:
+                jm.delete_job(job.id)
+                deleted_count += 1
+            except:
+                pass
+
+        print(f"[INFO] Cleared {deleted_count} jobs, deleted {files_deleted_count} file directories")
+
+        return {
+            "status": "cleared",
+            "jobs_deleted": deleted_count,
+            "files_deleted": files_deleted_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/jobs/{job_id}/file")
 def jobs_file(job_id: str):
     try:
@@ -147,18 +207,38 @@ def jobs_file(job_id: str):
 
     # Primary path from yt-dlp
     path = job.filename
+    print(f"[DEBUG] Job {job_id} - Primary filename: {path}")
+    print(f"[DEBUG] Job {job_id} - Temp directory: {getattr(job, 'tmpdir', None)}")
+
     if not path or not os.path.isfile(path):
         # Fallback: look for any file created in the job's temp dir (merge/rename quirks)
         tmpdir = getattr(job, "tmpdir", None)
         if tmpdir and os.path.isdir(tmpdir):
-            for name in os.listdir(tmpdir):
-                p = os.path.join(tmpdir, name)
-                if os.path.isfile(p):
-                    path = p
+            print(f"[DEBUG] Job {job_id} - Searching in tmpdir: {tmpdir}")
+            import glob
+            # Look for common video/audio extensions
+            patterns = ['*.mp4', '*.mkv', '*.webm', '*.avi', '*.mov', '*.m4a', '*.mp3', '*.flac', '*.wav']
+            for pattern in patterns:
+                files = glob.glob(os.path.join(tmpdir, pattern))
+                if files:
+                    # Get the largest file (likely the merged result)
+                    path = max(files, key=os.path.getsize)
+                    print(f"[DEBUG] Job {job_id} - Found file using pattern {pattern}: {path}")
                     break
 
     if not path or not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
+        # Additional debugging info
+        tmpdir = getattr(job, "tmpdir", None)
+        if tmpdir and os.path.isdir(tmpdir):
+            files_in_dir = os.listdir(tmpdir)
+            print(f"[DEBUG] Job {job_id} - Files in tmpdir: {files_in_dir}")
+            error_detail = f"File not found. Tmpdir exists with files: {files_in_dir}"
+        else:
+            error_detail = f"File not found. Tmpdir: {tmpdir} (exists: {os.path.isdir(tmpdir) if tmpdir else False})"
+
+        raise HTTPException(status_code=404, detail=error_detail)
+
+    print(f"[DEBUG] Job {job_id} - Serving file: {path} (size: {os.path.getsize(path)} bytes)")
 
     return FileResponse(
         path,
