@@ -319,6 +319,50 @@ async def stream_media(
         return RedirectResponse(url=signed_url)
 
 
+# ──────────────────────────── Download endpoint ───────────────────────────── #
+
+@router.get("/{media_id}/download")
+async def download_media(
+    media_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Force-download the video file to the browser.
+    Sets Content-Disposition: attachment so it works cross-origin
+    (unlike the <a download> attribute which browsers ignore cross-origin).
+    """
+    media = await db.get(Media, _uuid.UUID(media_id))
+    if not media or media.file_status != "available":
+        raise HTTPException(status_code=404, detail="Media not available")
+
+    storage = StorageService()
+
+    if storage.storage_type == "local":
+        full_path = storage.get_local_path(media.video_url)
+        if not full_path or not os.path.exists(full_path):
+            raise HTTPException(status_code=404, detail="Video file not found on disk")
+
+        # Build a safe filename from the title
+        import re
+        safe_title = re.sub(r'[^\w\s\-.]', '', media.title or "video")[:80].strip()
+        ext = os.path.splitext(full_path)[1] or ".mp4"
+        filename = f"{safe_title}{ext}"
+
+        return FileResponse(
+            full_path,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(os.path.getsize(full_path)),
+            },
+        )
+    else:
+        # S3: redirect to signed URL (browser will handle download)
+        signed_url = storage.get_signed_url(media.video_url)
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=signed_url)
+
+
 # ──────────────────────────── Watch progress ──────────────────────────────── #
 
 @router.get("/{media_id}/progress", response_model=WatchProgressOut)

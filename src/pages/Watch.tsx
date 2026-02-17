@@ -73,8 +73,9 @@ export default function Watch() {
     }
   }, [saveProgress])
 
-  // Build the streaming URL
-  const streamUrl = id ? `${BASE_URL}/api/library/${id}/stream` : ''
+  // Build the streaming and download URLs
+  const streamUrl   = id ? `${BASE_URL}/api/library/${id}/stream` : ''
+  const downloadUrl = id ? `${BASE_URL}/api/library/${id}/download` : ''
 
   if (isLoading) {
     return (
@@ -214,8 +215,7 @@ export default function Watch() {
               View Source
             </a>
             <a
-              href={streamUrl}
-              download
+              href={downloadUrl}
               className="btn-ghost w-full flex items-center justify-center gap-2 text-sm py-2"
             >
               <Download className="size-4" />
