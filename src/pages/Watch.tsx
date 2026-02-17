@@ -15,6 +15,12 @@ import {
 } from '../lib/libraryApi'
 import { BASE_URL } from '../lib/config'
 
+function resolveThumbnail(url?: string) {
+  if (!url) return undefined
+  if (url.startsWith('/')) return `${BASE_URL}${url}`
+  return url
+}
+
 const PROGRESS_SAVE_INTERVAL_MS = 5_000  // Save progress every 5 seconds
 
 export default function Watch() {
@@ -118,7 +124,7 @@ export default function Watch() {
             controls
             className="w-full h-full"
             onError={() => setVideoError('Failed to load video. The file may have been removed.')}
-            poster={media.thumbnail_url || undefined}
+            poster={resolveThumbnail(media.thumbnail_url)}
             preload="metadata"
           />
         )}
