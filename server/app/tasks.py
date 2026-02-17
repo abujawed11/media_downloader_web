@@ -182,6 +182,38 @@ def download_media(
             logger.info(f"Task {task_id}: File location - {filename}")
             logger.info(f"Task {task_id}: Temp directory - {tmpdir}")
 
+            # Gather lightweight yt-dlp metadata for library record
+            yt_info_subset = {
+                "id": info.get("id"),
+                "title": info.get("title"),
+                "description": info.get("description"),
+                "duration": info.get("duration"),
+                "uploader": info.get("uploader"),
+                "channel": info.get("channel"),
+                "upload_date": info.get("upload_date"),
+                "thumbnail": info.get("thumbnail"),
+                "thumbnails": [
+                    {"url": t.get("url"), "width": t.get("width"), "height": t.get("height")}
+                    for t in (info.get("thumbnails") or [])[-5:]  # Last 5 thumbnails only
+                ],
+                "tags": (info.get("tags") or [])[:20],  # Limit tags
+                "ext": info.get("ext"),
+                "height": info.get("height"),
+            }
+
+            # Trigger library save in background (non-blocking)
+            try:
+                save_to_library_task.delay(
+                    filename=filename,
+                    tmpdir=tmpdir,
+                    url=url,
+                    title=title or info.get("title"),
+                    ext=ext or os.path.splitext(filename)[1].lstrip("."),
+                    yt_info=yt_info_subset,
+                )
+            except Exception as lib_err:
+                logger.warning(f"Task {task_id}: Could not queue library save: {lib_err}")
+
             return {
                 'status': 'done',
                 'filename': filename,
@@ -226,3 +258,39 @@ def download_media(
         except:
             pass
         raise
+
+
+@celery_app.task(name="app.tasks.save_to_library")
+def save_to_library_task(
+    filename: str,
+    tmpdir: str,
+    url: str,
+    title: Optional[str] = None,
+    ext: Optional[str] = None,
+    yt_info: Optional[dict] = None,
+) -> dict:
+    """
+    Save a completed download to the persistent media library.
+    Moves the file to permanent storage, generates a thumbnail,
+    and creates a Media record in PostgreSQL.
+    """
+    logger.info(f"Saving to library: {filename}")
+    try:
+        from .services.library_service import save_completed_download_to_library
+        media_id = save_completed_download_to_library(
+            filename=filename,
+            tmpdir=tmpdir,
+            url=url,
+            title=title,
+            ext=ext,
+            yt_info=yt_info,
+        )
+        if media_id:
+            logger.info(f"Saved to library with media_id={media_id}")
+            return {"status": "saved", "media_id": media_id}
+        else:
+            logger.warning("Library save returned no media_id")
+            return {"status": "skipped"}
+    except Exception as exc:
+        logger.exception(f"save_to_library_task failed: {exc}")
+        return {"status": "error", "error": str(exc)}

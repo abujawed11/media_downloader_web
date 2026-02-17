@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/downloads /app/cookies
+RUN mkdir -p /app/downloads /app/cookies /app/media_storage/videos /app/media_storage/thumbnails
 
 # Expose port
 EXPOSE 8000

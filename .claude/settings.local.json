@@ -17,7 +17,11 @@
       "Bash(chmod:*)",
       "Bash(docker-compose:*)",
       "Bash(curl:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(\"D:/react/media-downloader-web/server/requirements.txt\":*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

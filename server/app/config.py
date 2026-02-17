@@ -40,6 +40,24 @@ class Settings:
     CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
     CELERY_WORKER_CONCURRENCY: int = int(os.getenv("CELERY_WORKER_CONCURRENCY", "4"))
 
+    # Database Configuration
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/medialib"
+    )
+
+    # Storage Configuration
+    STORAGE_TYPE: str = os.getenv("STORAGE_TYPE", "local")  # "local" or "s3"
+    LOCAL_STORAGE_PATH: str = os.getenv("LOCAL_STORAGE_PATH", "./media_storage")
+
+    # S3-compatible storage (Cloudflare R2 / AWS S3)
+    S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "")
+    S3_ACCESS_KEY_ID: str = os.getenv("S3_ACCESS_KEY_ID", "")
+    S3_SECRET_ACCESS_KEY: str = os.getenv("S3_SECRET_ACCESS_KEY", "")
+    S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "medialib")
+    S3_REGION: str = os.getenv("S3_REGION", "auto")
+    CDN_URL: str = os.getenv("CDN_URL", "")
+
 
 # Create a global settings instance
 settings = Settings()
