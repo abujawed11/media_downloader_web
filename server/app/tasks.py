@@ -9,9 +9,9 @@ import redis
 from celery import Task
 from celery.utils.log import get_task_logger
 
-from .celery_app import celery_app
-from .services.ytdlp_service import _cookies_for, _normalize_youtube_url
-from .config import settings
+from app.celery_app import celery_app
+from app.services.ytdlp_service import _cookies_for, _normalize_youtube_url
+from app.config import settings
 
 logger = get_task_logger(__name__)
 
@@ -65,8 +65,8 @@ def download_media(
     task_id = self.request.id
     logger.info(f"Starting download task {task_id} for URL: {url}")
 
-    # Create temporary directory in /app/downloads (Docker volume)
-    downloads_dir = "/app/downloads"
+    # Create temporary directory in downloads directory
+    downloads_dir = settings.YTDLP_OUTPUT_PATH
     os.makedirs(downloads_dir, exist_ok=True)
     tmpdir = tempfile.mkdtemp(prefix=f"md_{task_id}_", dir=downloads_dir)
 

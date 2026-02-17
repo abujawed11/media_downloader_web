@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import media
-from .config import settings
+from app.routers import media
+from app.config import settings
 import os
 
 app = FastAPI(title="MediaDownloader API", version="0.1.0")

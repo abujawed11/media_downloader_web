@@ -1,6 +1,6 @@
 """Celery application configuration for async job processing."""
 from celery import Celery
-from .config import settings
+from app.config import settings
 
 # Create Celery app
 celery_app = Celery(
