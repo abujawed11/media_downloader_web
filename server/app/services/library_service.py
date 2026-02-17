@@ -126,7 +126,7 @@ def save_completed_download_to_library(
                 logger.info("Upload progress %s%%: %s", percent, media_id)
                 publish_progress(media_id, percent, job_id=job_id)
 
-            video_url = asyncio.run(storage.upload_video(filename, media_id, progress_callback=_on_progress))
+            video_url = asyncio.run(storage.upload_video(filename, media_id, progress_callback=_on_progress, title=title or info.get("title")))
         except Exception as exc:
             logger.error("Failed to upload video to storage: %s", exc)
             publish_error(media_id, job_id=job_id)

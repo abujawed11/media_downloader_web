@@ -369,8 +369,17 @@ async def download_media(
         )
     else:
         # S3: redirect to signed URL with Content-Disposition: attachment so the
-        # browser downloads the file instead of playing it inline
-        signed_url = storage.get_signed_url(media.video_url, force_download=True)
+        # browser downloads the file instead of playing it inline.
+        # Use the human-readable title as the filename in the save dialog.
+        import re as _re
+        safe_title = _re.sub(r'[^\w\s\-]', '', media.title or "video")[:80].strip()
+        ext = (media.video_url.rsplit(".", 1)[-1] if "." in media.video_url else "mp4")
+        download_filename = f"{safe_title}.{ext}"
+        signed_url = storage.get_signed_url(
+            media.video_url,
+            force_download=True,
+            download_filename=download_filename,
+        )
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url=signed_url)
 

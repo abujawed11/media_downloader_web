@@ -1,9 +1,24 @@
 """Storage service for videos and thumbnails (local filesystem or S3-compatible)."""
 
 import os
+import re
 import shutil
 from typing import Optional, Callable
 from ..config import settings
+
+
+def _slugify(text: str, max_len: int = 60) -> str:
+    """Convert a title to a URL/filename-safe slug.
+
+    'POCO X8 Pro India Launch, PlayStation 6 Delayed?' → 'POCO-X8-Pro-India-Launch-PlayStation-6-Delayed'
+    """
+    # Drop non-ASCII characters (handles Hindi, emoji, etc.)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    # Replace any run of non-alphanumeric chars (except hyphens) with a hyphen
+    text = re.sub(r"[^\w]+", "-", text.strip())
+    # Collapse multiple hyphens
+    text = re.sub(r"-+", "-", text)
+    return text.strip("-")[:max_len].strip("-")
 
 
 class StorageService:
@@ -45,15 +60,20 @@ class StorageService:
         local_file_path: str,
         media_id: str,
         progress_callback: Optional[Callable[[int], None]] = None,
+        title: Optional[str] = None,
     ) -> str:
         """Upload video file to storage and return the URL/path.
 
-        progress_callback(percent: int) is called periodically during S3 uploads
-        and also during local copies so callers can publish progress events.
+        The stored key format is:  videos/{uuid}_{slug}.ext
+        e.g. videos/0c015cac-2b22-4b77-bc08_POCO-X8-Pro-India-Launch.mp4
+
+        progress_callback(percent: int) is called periodically during uploads.
         """
         _, ext = os.path.splitext(local_file_path)
         ext = ext or ".mp4"
-        filename = f"videos/{media_id}{ext}"
+        slug = _slugify(title) if title else ""
+        object_name = f"{media_id}_{slug}" if slug else media_id
+        filename = f"videos/{object_name}{ext}"
 
         if self.storage_type == "s3":
             file_size = os.path.getsize(local_file_path)
@@ -150,18 +170,25 @@ class StorageService:
         relative = file_url.replace("/media-storage/", "", 1)
         return os.path.join(self.local_storage_path, relative)
 
-    def get_signed_url(self, file_url: str, expiration: int = 3600, force_download: bool = False) -> str:
+    def get_signed_url(
+        self,
+        file_url: str,
+        expiration: int = 3600,
+        force_download: bool = False,
+        download_filename: Optional[str] = None,
+    ) -> str:
         """Generate a signed URL for S3 files (returns original URL for local storage).
 
-        force_download=True adds ResponseContentDisposition so R2/S3 sends the file
-        as an attachment rather than streaming it inline in the browser.
+        force_download=True adds ResponseContentDisposition: attachment so R2/S3
+        sends the file as a download rather than streaming it inline.
+        download_filename overrides the filename shown in the browser's save dialog.
         """
         if self.storage_type == "s3":
             key = self._extract_key(file_url)
             params: dict = {"Bucket": self.bucket_name, "Key": key}
             if force_download:
-                filename = key.split("/")[-1]  # e.g. "videos/abc.mp4" → "abc.mp4"
-                params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
+                fname = download_filename or key.split("/")[-1]
+                params["ResponseContentDisposition"] = f'attachment; filename="{fname}"'
                 params["ResponseContentType"] = "application/octet-stream"
             return self.s3_client.generate_presigned_url(
                 "get_object",
