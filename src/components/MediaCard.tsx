@@ -11,11 +11,17 @@ interface Props {
   onDelete?: (id: string) => void
 }
 
-/** Resolve relative /media-storage/... URLs against the API server origin */
+/**
+ * Resolve a thumbnail URL so it is always loaded through our own origin.
+ * - Relative paths (/media-storage/...) → prepend BASE_URL
+ * - External CDN URLs (fbcdn.net, ytimg.com, etc.) → route through /proxy-image
+ *   so Edge/Firefox Tracking Prevention never blocks them
+ */
 function resolveThumbnail(url?: string): string {
   if (!url) return ''
   if (url.startsWith('/')) return `${BASE_URL}${url}`
-  return url
+  if (url.startsWith(BASE_URL)) return url          // already our API
+  return `${BASE_URL}/proxy-image?url=${encodeURIComponent(url)}`
 }
 
 export default function MediaCard({ item, watchProgress, onDelete }: Props) {

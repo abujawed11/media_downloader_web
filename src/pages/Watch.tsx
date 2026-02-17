@@ -18,7 +18,8 @@ import { BASE_URL } from '../lib/config'
 function resolveThumbnail(url?: string) {
   if (!url) return undefined
   if (url.startsWith('/')) return `${BASE_URL}${url}`
-  return url
+  if (url.startsWith(BASE_URL)) return url
+  return `${BASE_URL}/proxy-image?url=${encodeURIComponent(url)}`
 }
 
 const PROGRESS_SAVE_INTERVAL_MS = 5_000  // Save progress every 5 seconds
