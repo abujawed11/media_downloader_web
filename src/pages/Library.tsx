@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, SortAsc, SortDesc, Loader2, Film, RefreshCw } from 'lucide-react'
+import { Search, SortAsc, SortDesc, Loader2, Film, RefreshCw, CloudUpload, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import MediaCard from '../components/MediaCard'
 import ContinueWatchingRow from '../components/ContinueWatchingRow'
@@ -8,6 +8,7 @@ import {
   fetchLibrary,
   fetchContinueWatching,
   fetchWatchProgress,
+  fetchProcessing,
   deleteMediaItem,
   fetchLibraryStats,
 } from '../lib/libraryApi'
@@ -35,6 +36,12 @@ export default function Library() {
     queryKey: ['library', page, search, platform, sortBy, sortOrder],
     queryFn: () =>
       fetchLibrary({ page, limit: LIMIT, search: search || undefined, platform: platform || undefined, sort_by: sortBy, sort_order: sortOrder }),
+  })
+
+  const { data: processingItems = [] } = useQuery({
+    queryKey: ['library-processing'],
+    queryFn: fetchProcessing,
+    refetchInterval: 5_000,  // poll every 5s until items disappear
   })
 
   const { data: continueWatching = [] } = useQuery({
@@ -73,6 +80,7 @@ export default function Library() {
       qc.invalidateQueries({ queryKey: ['library'] })
       qc.invalidateQueries({ queryKey: ['library-stats'] })
       qc.invalidateQueries({ queryKey: ['continue-watching'] })
+      qc.invalidateQueries({ queryKey: ['library-processing'] })
     },
     onError: () => toast.error('Failed to delete'),
   })
@@ -148,6 +156,40 @@ export default function Library() {
           ))}
         </div>
       </div>
+
+      {/* ── Processing / Uploading videos ─────────────────────────────────── */}
+      {processingItems.length > 0 && (
+        <div className="space-y-2">
+          {processingItems.map(item => (
+            <div
+              key={item.id}
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 border text-sm
+                ${item.file_status === 'error'
+                  ? 'bg-red-950/40 border-red-500/30'
+                  : 'bg-zinc-900 border-yellow-400/20'}`}
+            >
+              {item.file_status === 'error'
+                ? <AlertCircle className="size-4 text-red-400 shrink-0" />
+                : <CloudUpload className="size-4 text-yellow-400 shrink-0 animate-pulse" />
+              }
+              <span className="flex-1 truncate font-medium text-white">{item.title}</span>
+              <span className={`shrink-0 text-xs ${item.file_status === 'error' ? 'text-red-400' : 'text-zinc-500'}`}>
+                {item.file_status === 'error' ? 'Upload failed' : 'Uploading to storage…'}
+              </span>
+              {item.file_status === 'error' && (
+                <button
+                  onClick={() => deleteMutation.mutate(item.id)}
+                  className="shrink-0 text-xs text-zinc-500 hover:text-white border border-white/10 hover:border-white/30
+                             px-2 py-0.5 rounded transition-colors ml-2"
+                  title="Dismiss"
+                >
+                  Dismiss
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Continue Watching ──────────────────────────────────────────────── */}
       {continueWatching.length > 0 && (

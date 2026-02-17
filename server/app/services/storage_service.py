@@ -24,8 +24,15 @@ class StorageService:
                 endpoint_url=settings.S3_ENDPOINT_URL or None,
                 aws_access_key_id=settings.S3_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
-                config=Config(signature_version="s3v4"),
+                config=Config(
+                    signature_version="s3v4",
+                    retries={"max_attempts": 3, "mode": "standard"},
+                    connect_timeout=30,
+                    read_timeout=300,  # large file uploads need longer timeout
+                ),
                 region_name=settings.S3_REGION,
+                use_ssl=True,
+                verify=True,
             )
             self.bucket_name = settings.S3_BUCKET_NAME
         else:
@@ -80,12 +87,11 @@ class StorageService:
 
         if self.storage_type == "s3":
             try:
-                key = file_url.split(f"{self.bucket_name}/", 1)[-1]
+                key = self._extract_key(file_url)
                 self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
             except Exception:
                 pass
         else:
-            # Strip URL prefix to get relative path
             relative = file_url.replace("/media-storage/", "", 1)
             full_path = os.path.join(self.local_storage_path, relative)
             if os.path.exists(full_path):
@@ -101,10 +107,24 @@ class StorageService:
     def get_signed_url(self, file_url: str, expiration: int = 3600) -> str:
         """Generate a signed URL for S3 files (returns original URL for local storage)."""
         if self.storage_type == "s3":
-            key = file_url.split(f"{self.bucket_name}/", 1)[-1]
+            key = self._extract_key(file_url)
             return self.s3_client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self.bucket_name, "Key": key},
                 ExpiresIn=expiration,
             )
         return file_url
+
+    def _extract_key(self, file_url: str) -> str:
+        """
+        Extract the S3 object key from a stored URL.
+        Works regardless of whether CDN_URL or direct S3 URL was used.
+        e.g. 'https://pub-xxx.r2.dev/videos/abc.mp4'  → 'videos/abc.mp4'
+             'https://s3.amazonaws.com/bucket/videos/abc.mp4' → 'videos/abc.mp4'
+        """
+        for prefix in ("/videos/", "/thumbnails/"):
+            if prefix in file_url:
+                idx = file_url.index(prefix)
+                return file_url[idx + 1:]  # strip leading slash → 'videos/abc.mp4'
+        # Fallback: everything after the last domain segment
+        return file_url.split("/", 3)[-1]

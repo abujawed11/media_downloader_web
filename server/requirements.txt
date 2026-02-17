@@ -33,3 +33,6 @@ sqlalchemy==2.0.36
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
 alembic==1.14.0
+
+# S3-compatible storage (AWS S3 / Cloudflare R2)
+boto3==1.35.0

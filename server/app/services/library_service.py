@@ -57,48 +57,25 @@ def save_completed_download_to_library(
     import asyncio
 
     try:
-        # Lazy import to avoid circular deps
+        from ..models.database import Base, Media, DownloadJob
+        from .storage_service import StorageService
+        from sqlalchemy import select
+        import asyncio
+
         _, SyncSession = _get_sync_engine()
-
-        storage = StorageService()
-
-        # ---- Generate thumbnail ----
-        thumbnail_local = ""
-        try:
-            from .thumbnail_service import ThumbnailService
-            thumbnail_local = asyncio.run(ThumbnailService.generate_thumbnail(filename))
-        except Exception as exc:
-            logger.warning("Thumbnail generation failed: %s", exc)
-
-        # ---- Upload video to persistent storage ----
-        media_id = str(uuid.uuid4())
-        try:
-            video_url = asyncio.run(storage.upload_video(filename, media_id))
-        except Exception as exc:
-            logger.error("Failed to upload video to storage: %s", exc)
-            return None
-
-        # ---- Upload thumbnail ----
-        thumbnail_url = ""
-        if thumbnail_local and os.path.exists(thumbnail_local):
-            try:
-                thumbnail_url = asyncio.run(storage.upload_thumbnail(thumbnail_local, media_id))
-            except Exception as exc:
-                logger.warning("Failed to upload thumbnail: %s", exc)
-
-        # ---- Use original thumbnail from yt-dlp if local generation failed ----
-        if not thumbnail_url and yt_info:
-            thumbnail_url = _select_thumbnail(yt_info) or ""
-
-        # ---- Build media record ----
         info = yt_info or {}
+        media_id = str(uuid.uuid4())
+
+        # ---- Step 1: Create DB record immediately with status="processing" ----
+        # This makes the video appear in the Library right away (as "processing")
+        # so the user knows it's on its way.
         media = Media(
             id=uuid.UUID(media_id),
             title=title or info.get("title") or "Untitled",
             description=info.get("description"),
             duration=int(info.get("duration") or 0) or None,
-            thumbnail_url=thumbnail_url,
-            video_url=video_url,
+            thumbnail_url=_select_thumbnail(info) or "",  # use yt-dlp thumb initially
+            video_url="",   # filled in after upload
             file_size=os.path.getsize(filename) if os.path.exists(filename) else None,
             format=ext or info.get("ext"),
             resolution=_extract_resolution(info),
@@ -108,13 +85,12 @@ def save_completed_download_to_library(
             uploader=info.get("uploader") or info.get("channel"),
             upload_date=_parse_upload_date(info.get("upload_date")),
             tags=info.get("tags") or [],
-            file_status="available",
+            file_status="processing",
         )
 
         with SyncSession() as session:
-            # Check if same source_id + platform already exists
+            # Check duplicate
             if media.source_id and media.source_platform:
-                from sqlalchemy import select
                 existing = session.execute(
                     select(Media).where(
                         Media.source_platform == media.source_platform,
@@ -122,20 +98,72 @@ def save_completed_download_to_library(
                     )
                 ).scalar_one_or_none()
                 if existing:
-                    logger.info(
-                        "Media %s/%s already in library (id=%s)",
-                        media.source_platform,
-                        media.source_id,
-                        existing.id,
-                    )
+                    logger.info("Media %s/%s already in library (id=%s)",
+                                media.source_platform, media.source_id, existing.id)
                     return str(existing.id)
 
             session.add(media)
             session.commit()
-            logger.info("Saved media %s to library: %s", media_id, media.title)
+            logger.info("Created processing record %s: %s", media_id, media.title)
 
-        # ---- Cleanup temp files ----
-        _cleanup(filename, thumbnail_local)
+        # ---- Step 2: Generate thumbnail ----
+        thumbnail_local = ""
+        try:
+            from .thumbnail_service import ThumbnailService
+            thumbnail_local = asyncio.run(ThumbnailService.generate_thumbnail(filename))
+        except Exception as exc:
+            logger.warning("Thumbnail generation failed: %s", exc)
+
+        # ---- Step 3: Upload video to storage (local copy or R2 upload) ----
+        storage = StorageService()
+        logger.info("Uploading video to storage (type=%s)...", storage.storage_type)
+        try:
+            video_url = asyncio.run(storage.upload_video(filename, media_id))
+        except Exception as exc:
+            logger.error("Failed to upload video to storage: %s", exc)
+            # Mark as error in DB
+            with SyncSession() as session:
+                m = session.get(Media, uuid.UUID(media_id))
+                if m:
+                    m.file_status = "error"
+                    session.commit()
+            return None
+
+        # ---- Step 4: Upload thumbnail ----
+        # Only upload thumbnail to R2 if CDN_URL is set (public bucket).
+        # Private R2 URLs are not accessible by the browser directly.
+        # Without CDN_URL, always use the yt-dlp public thumbnail URL.
+        thumbnail_url = ""
+        can_upload_thumbnail = (
+            storage.storage_type == "local"
+            or (storage.storage_type == "s3" and bool(settings.CDN_URL))
+        )
+
+        if can_upload_thumbnail and thumbnail_local and os.path.exists(thumbnail_local):
+            try:
+                thumbnail_url = asyncio.run(storage.upload_thumbnail(thumbnail_local, media_id))
+                logger.info("Thumbnail uploaded: %s", thumbnail_url)
+            except Exception as exc:
+                logger.warning("Failed to upload thumbnail: %s", exc)
+
+        # Always fall back to yt-dlp public thumbnail URL if we have no uploaded one
+        if not thumbnail_url:
+            thumbnail_url = _select_thumbnail(info) or ""
+            if thumbnail_url:
+                logger.info("Using yt-dlp thumbnail URL: %s", thumbnail_url)
+
+        # ---- Step 5: Update DB record to "available" with final URLs ----
+        with SyncSession() as session:
+            m = session.get(Media, uuid.UUID(media_id))
+            if m:
+                m.video_url = video_url
+                m.thumbnail_url = thumbnail_url
+                m.file_status = "available"
+                session.commit()
+                logger.info("Media %s now available at %s", media_id, video_url)
+
+        # ---- Step 6: Cleanup temp directory ----
+        _cleanup(tmpdir)  # removes the whole temp dir and everything inside
 
         return media_id
 

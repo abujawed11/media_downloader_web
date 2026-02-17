@@ -154,6 +154,17 @@ async def list_media(
     )
 
 
+@router.get("/processing", response_model=List[MediaOut])
+async def get_processing(db: AsyncSession = Depends(get_db)):
+    """Return videos currently being uploaded/processed."""
+    result = await db.execute(
+        select(Media)
+        .where(Media.file_status.in_(["processing", "error"]))
+        .order_by(desc(Media.added_date))
+    )
+    return [MediaOut.from_orm_safe(m) for m in result.scalars().all()]
+
+
 @router.get("/continue-watching", response_model=List[MediaOut])
 async def get_continue_watching(
     limit: int = Query(10, ge=1, le=50),

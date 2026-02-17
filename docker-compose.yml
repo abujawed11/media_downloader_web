@@ -47,13 +47,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - HOST=0.0.0.0
-      - PORT=8000
+      # These MUST override .env because they use Docker service hostnames
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
-      - STORAGE_TYPE=local
       - LOCAL_STORAGE_PATH=/app/media_storage
     env_file:
       - ./server/.env
@@ -78,11 +76,11 @@ services:
       dockerfile: Dockerfile
     container_name: media-downloader-worker
     environment:
+      # These MUST override .env because they use Docker service hostnames
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
-      - STORAGE_TYPE=local
       - LOCAL_STORAGE_PATH=/app/media_storage
     env_file:
       - ./server/.env
