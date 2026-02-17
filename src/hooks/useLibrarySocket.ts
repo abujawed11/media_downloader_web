@@ -3,9 +3,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { BASE_URL } from '../lib/config'
 
 type WSMessage =
+  | { type: 'started';  media_id: string }
   | { type: 'progress'; media_id: string; percent: number }
   | { type: 'complete'; media_id: string }
-  | { type: 'error'; media_id: string }
+  | { type: 'error';    media_id: string }
 
 /** Derives ws(s)://host:port from the HTTP BASE_URL. */
 function wsUrl(): string {
@@ -38,7 +39,10 @@ export function useLibrarySocket(): Record<string, number> {
         try {
           const msg: WSMessage = JSON.parse(event.data as string)
 
-          if (msg.type === 'progress') {
+          if (msg.type === 'started') {
+            // Download finished, upload about to begin — fetch the processing record
+            qc.invalidateQueries({ queryKey: ['library-processing'] })
+          } else if (msg.type === 'progress') {
             setProgressMap(prev => ({ ...prev, [msg.media_id]: msg.percent }))
           } else if (msg.type === 'complete') {
             // Remove from progress map and refresh the library grid

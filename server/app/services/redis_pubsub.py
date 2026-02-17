@@ -22,6 +22,17 @@ def _get_client():
     return _redis_client
 
 
+def publish_started(media_id: str) -> None:
+    """Fired once when the processing DB record is created (upload about to begin)."""
+    try:
+        _get_client().publish(CHANNEL, json.dumps({
+            "type": "started",
+            "media_id": media_id,
+        }))
+    except Exception as exc:
+        logger.debug("publish_started failed (non-fatal): %s", exc)
+
+
 def publish_progress(media_id: str, percent: int) -> None:
     try:
         _get_client().publish(CHANNEL, json.dumps({

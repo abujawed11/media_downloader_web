@@ -115,7 +115,8 @@ def save_completed_download_to_library(
             logger.warning("Thumbnail generation failed: %s", exc)
 
         # ---- Step 3: Upload video to storage (local copy or R2 upload) ----
-        from .redis_pubsub import publish_progress, publish_complete, publish_error
+        from .redis_pubsub import publish_started, publish_progress, publish_complete, publish_error
+        publish_started(media_id)  # tells browser to fetch the new processing record
 
         storage = StorageService()
         logger.info("Uploading video to storage (type=%s)...", storage.storage_type)
