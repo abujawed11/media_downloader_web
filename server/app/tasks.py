@@ -98,7 +98,7 @@ def download_media(
             "throttledratelimit": None,
             
             # JavaScript runtime for YouTube signature decryption
-            "javascript_runtimes": ["node", "javascript"],
+            # "javascript_runtimes": ["node", "javascript"],
         }
 
         # Add cookies if available

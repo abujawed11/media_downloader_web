@@ -396,7 +396,7 @@ def _base_ydl_opts(skip_download: bool = True, url: str = None) -> Dict:
         "source_address": "0.0.0.0",   # prefer IPv4 paths
         
         # JavaScript runtime for YouTube signature decryption
-        "javascript_runtimes": ["node", "javascript"],
+        # "javascript_runtimes": ["node", "javascript"],
 
         # Better User-Agent for Facebook:
         "http_headers": {
