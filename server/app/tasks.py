@@ -96,6 +96,9 @@ def download_media(
             "http_chunk_size": 10485760,  # 10MB chunks
             "buffersize": 8192,
             "throttledratelimit": None,
+            
+            # JavaScript runtime for YouTube signature decryption
+            "javascript_runtimes": ["node", "javascript"],
         }
 
         # Add cookies if available
