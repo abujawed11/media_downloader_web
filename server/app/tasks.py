@@ -195,7 +195,6 @@ def download_media(
         logger.info(f"Task {task_id}: Paused")
         # Don't clean up temp files on pause (for resume)
         # Store pause state in Redis
-        from .config import settings
         redis_client.hset(f"job:{task_id}", mapping={
             'paused_tmpdir': tmpdir,
             'paused_at': str(time.time())
