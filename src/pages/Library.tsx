@@ -4,6 +4,7 @@ import { Search, SortAsc, SortDesc, Loader2, Film, RefreshCw, CloudUpload, Alert
 import toast from 'react-hot-toast'
 import MediaCard from '../components/MediaCard'
 import ContinueWatchingRow from '../components/ContinueWatchingRow'
+import { useLibrarySocket } from '../hooks/useLibrarySocket'
 import {
   fetchLibrary,
   fetchContinueWatching,
@@ -38,10 +39,13 @@ export default function Library() {
       fetchLibrary({ page, limit: LIMIT, search: search || undefined, platform: platform || undefined, sort_by: sortBy, sort_order: sortOrder }),
   })
 
+  // WebSocket for live upload progress — also triggers cache invalidation on complete/error
+  const uploadProgress = useLibrarySocket()
+
   const { data: processingItems = [] } = useQuery({
     queryKey: ['library-processing'],
     queryFn: fetchProcessing,
-    refetchInterval: 5_000,  // poll every 5s until items disappear
+    // No polling needed — WebSocket invalidates this query automatically
   })
 
   const { data: continueWatching = [] } = useQuery({
@@ -160,34 +164,57 @@ export default function Library() {
       {/* ── Processing / Uploading videos ─────────────────────────────────── */}
       {processingItems.length > 0 && (
         <div className="space-y-2">
-          {processingItems.map(item => (
-            <div
-              key={item.id}
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 border text-sm
-                ${item.file_status === 'error'
-                  ? 'bg-red-950/40 border-red-500/30'
-                  : 'bg-zinc-900 border-yellow-400/20'}`}
-            >
-              {item.file_status === 'error'
-                ? <AlertCircle className="size-4 text-red-400 shrink-0" />
-                : <CloudUpload className="size-4 text-yellow-400 shrink-0 animate-pulse" />
-              }
-              <span className="flex-1 truncate font-medium text-white">{item.title}</span>
-              <span className={`shrink-0 text-xs ${item.file_status === 'error' ? 'text-red-400' : 'text-zinc-500'}`}>
-                {item.file_status === 'error' ? 'Upload failed' : 'Uploading to storage…'}
-              </span>
-              {item.file_status === 'error' && (
-                <button
-                  onClick={() => deleteMutation.mutate(item.id)}
-                  className="shrink-0 text-xs text-zinc-500 hover:text-white border border-white/10 hover:border-white/30
-                             px-2 py-0.5 rounded transition-colors ml-2"
-                  title="Dismiss"
-                >
-                  Dismiss
-                </button>
-              )}
-            </div>
-          ))}
+          {processingItems.map(item => {
+            const percent = uploadProgress[item.id]
+            const isError = item.file_status === 'error'
+            return (
+              <div
+                key={item.id}
+                className={`flex items-center gap-3 rounded-lg px-4 py-3 border text-sm
+                  ${isError
+                    ? 'bg-red-950/40 border-red-500/30'
+                    : 'bg-zinc-900 border-yellow-400/20'}`}
+              >
+                {isError
+                  ? <AlertCircle className="size-4 text-red-400 shrink-0" />
+                  : <CloudUpload className="size-4 text-yellow-400 shrink-0 animate-pulse" />
+                }
+                <span className="flex-1 truncate font-medium text-white">{item.title}</span>
+
+                {/* Progress bar — only while uploading */}
+                {!isError && percent !== undefined && (
+                  <div className="shrink-0 flex items-center gap-2">
+                    <div className="w-24 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-yellow-400 rounded-full transition-all duration-300"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-yellow-400 w-8 text-right">{percent}%</span>
+                  </div>
+                )}
+
+                <span className={`shrink-0 text-xs ${isError ? 'text-red-400' : 'text-zinc-500'}`}>
+                  {isError
+                    ? 'Upload failed'
+                    : percent !== undefined
+                      ? 'Uploading…'
+                      : 'Waiting…'}
+                </span>
+
+                {isError && (
+                  <button
+                    onClick={() => deleteMutation.mutate(item.id)}
+                    className="shrink-0 text-xs text-zinc-500 hover:text-white border border-white/10 hover:border-white/30
+                               px-2 py-0.5 rounded transition-colors ml-2"
+                    title="Dismiss"
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

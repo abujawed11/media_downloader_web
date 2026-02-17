@@ -115,12 +115,19 @@ def save_completed_download_to_library(
             logger.warning("Thumbnail generation failed: %s", exc)
 
         # ---- Step 3: Upload video to storage (local copy or R2 upload) ----
+        from .redis_pubsub import publish_progress, publish_complete, publish_error
+
         storage = StorageService()
         logger.info("Uploading video to storage (type=%s)...", storage.storage_type)
         try:
-            video_url = asyncio.run(storage.upload_video(filename, media_id))
+            def _on_progress(percent: int) -> None:
+                logger.info("Upload progress %s%%: %s", percent, media_id)
+                publish_progress(media_id, percent)
+
+            video_url = asyncio.run(storage.upload_video(filename, media_id, progress_callback=_on_progress))
         except Exception as exc:
             logger.error("Failed to upload video to storage: %s", exc)
+            publish_error(media_id)
             # Mark as error in DB
             with SyncSession() as session:
                 m = session.get(Media, uuid.UUID(media_id))
@@ -161,6 +168,9 @@ def save_completed_download_to_library(
                 m.file_status = "available"
                 session.commit()
                 logger.info("Media %s now available at %s", media_id, video_url)
+
+        # Notify browser: upload done, library can refresh
+        publish_complete(media_id)
 
         # ---- Step 6: Cleanup temp directory ----
         _cleanup(tmpdir)  # removes the whole temp dir and everything inside

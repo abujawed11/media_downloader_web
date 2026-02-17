@@ -2,7 +2,7 @@
 
 import os
 import shutil
-from typing import Optional
+from typing import Optional, Callable
 from ..config import settings
 
 
@@ -40,25 +40,71 @@ class StorageService:
             os.makedirs(os.path.join(self.local_storage_path, "videos"), exist_ok=True)
             os.makedirs(os.path.join(self.local_storage_path, "thumbnails"), exist_ok=True)
 
-    async def upload_video(self, local_file_path: str, media_id: str) -> str:
-        """Upload video file to storage and return the URL/path."""
+    async def upload_video(
+        self,
+        local_file_path: str,
+        media_id: str,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> str:
+        """Upload video file to storage and return the URL/path.
+
+        progress_callback(percent: int) is called periodically during S3 uploads
+        and also during local copies so callers can publish progress events.
+        """
         _, ext = os.path.splitext(local_file_path)
         ext = ext or ".mp4"
         filename = f"videos/{media_id}{ext}"
 
         if self.storage_type == "s3":
+            file_size = os.path.getsize(local_file_path)
+            bytes_done = 0
+            last_reported = [-1]  # mutable closure cell
+
+            def _boto3_callback(chunk: int) -> None:
+                nonlocal bytes_done
+                bytes_done += chunk
+                if progress_callback and file_size > 0:
+                    percent = min(int(bytes_done / file_size * 100), 99)
+                    # Only fire every 5 % to avoid flooding Redis
+                    rounded = (percent // 5) * 5
+                    if rounded != last_reported[0]:
+                        last_reported[0] = rounded
+                        progress_callback(rounded)
+
             self.s3_client.upload_file(
                 local_file_path,
                 self.bucket_name,
                 filename,
                 ExtraArgs={"ContentType": "video/mp4"},
+                Callback=_boto3_callback,
             )
+            if progress_callback:
+                progress_callback(100)
             if settings.CDN_URL:
                 return f"{settings.CDN_URL.rstrip('/')}/{filename}"
             return f"{settings.S3_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
         else:
             dest_path = os.path.join(self.local_storage_path, filename)
-            shutil.copy2(local_file_path, dest_path)
+            # Chunked copy so we can report progress for local storage too
+            file_size = os.path.getsize(local_file_path)
+            bytes_done = 0
+            chunk_size = 4 * 1024 * 1024  # 4 MB
+            last_reported = [-1]
+            with open(local_file_path, "rb") as src, open(dest_path, "wb") as dst:
+                while True:
+                    chunk = src.read(chunk_size)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+                    bytes_done += len(chunk)
+                    if progress_callback and file_size > 0:
+                        percent = min(int(bytes_done / file_size * 100), 99)
+                        rounded = (percent // 5) * 5
+                        if rounded != last_reported[0]:
+                            last_reported[0] = rounded
+                            progress_callback(rounded)
+            if progress_callback:
+                progress_callback(100)
             return f"/media-storage/{filename}"
 
     async def upload_thumbnail(self, local_file_path: str, media_id: str) -> str:

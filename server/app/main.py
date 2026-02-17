@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .routers import media
 from .routers import media_library
+from .routers import ws
 from .config import settings
 import os
 import logging
@@ -63,6 +64,7 @@ app.add_middleware(
 # ── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(media.router)
 app.include_router(media_library.router)
+app.include_router(ws.router)  # WebSocket for live upload-progress events
 
 # ── Static file serving for local media storage ───────────────────────────── #
 _storage_path = os.path.abspath(settings.LOCAL_STORAGE_PATH)
