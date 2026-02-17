@@ -150,13 +150,22 @@ class StorageService:
         relative = file_url.replace("/media-storage/", "", 1)
         return os.path.join(self.local_storage_path, relative)
 
-    def get_signed_url(self, file_url: str, expiration: int = 3600) -> str:
-        """Generate a signed URL for S3 files (returns original URL for local storage)."""
+    def get_signed_url(self, file_url: str, expiration: int = 3600, force_download: bool = False) -> str:
+        """Generate a signed URL for S3 files (returns original URL for local storage).
+
+        force_download=True adds ResponseContentDisposition so R2/S3 sends the file
+        as an attachment rather than streaming it inline in the browser.
+        """
         if self.storage_type == "s3":
             key = self._extract_key(file_url)
+            params: dict = {"Bucket": self.bucket_name, "Key": key}
+            if force_download:
+                filename = key.split("/")[-1]  # e.g. "videos/abc.mp4" → "abc.mp4"
+                params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
+                params["ResponseContentType"] = "application/octet-stream"
             return self.s3_client.generate_presigned_url(
                 "get_object",
-                Params={"Bucket": self.bucket_name, "Key": key},
+                Params=params,
                 ExpiresIn=expiration,
             )
         return file_url

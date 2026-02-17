@@ -368,8 +368,9 @@ async def download_media(
             },
         )
     else:
-        # S3: redirect to signed URL (browser will handle download)
-        signed_url = storage.get_signed_url(media.video_url)
+        # S3: redirect to signed URL with Content-Disposition: attachment so the
+        # browser downloads the file instead of playing it inline
+        signed_url = storage.get_signed_url(media.video_url, force_download=True)
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url=signed_url)
 

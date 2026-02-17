@@ -216,6 +216,9 @@ export default function Watch() {
             </a>
             <a
               href={downloadUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
               className="btn-ghost w-full flex items-center justify-center gap-2 text-sm py-2"
             >
               <Download className="size-4" />
