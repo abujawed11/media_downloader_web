@@ -40,12 +40,13 @@ export default function Library() {
   })
 
   // WebSocket for live upload progress — also triggers cache invalidation on complete/error
-  const uploadProgress = useLibrarySocket()
+  const { progressMap: uploadProgress } = useLibrarySocket()
 
   const { data: processingItems = [] } = useQuery({
     queryKey: ['library-processing'],
     queryFn: fetchProcessing,
-    // No polling needed — WebSocket invalidates this query automatically
+    // WebSocket invalidates this instantly; polling is a fallback for missed events
+    refetchInterval: 10_000,
   })
 
   const { data: continueWatching = [] } = useQuery({

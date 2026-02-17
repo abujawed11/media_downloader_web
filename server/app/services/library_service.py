@@ -45,6 +45,7 @@ def save_completed_download_to_library(
     title: Optional[str],
     ext: Optional[str],
     yt_info: Optional[dict] = None,
+    job_id: Optional[str] = None,
 ) -> Optional[str]:
     """
     Move the downloaded file to persistent storage, generate a thumbnail,
@@ -116,19 +117,19 @@ def save_completed_download_to_library(
 
         # ---- Step 3: Upload video to storage (local copy or R2 upload) ----
         from .redis_pubsub import publish_started, publish_progress, publish_complete, publish_error
-        publish_started(media_id)  # tells browser to fetch the new processing record
+        publish_started(media_id, job_id=job_id)  # tells browser to fetch the new processing record
 
         storage = StorageService()
         logger.info("Uploading video to storage (type=%s)...", storage.storage_type)
         try:
             def _on_progress(percent: int) -> None:
                 logger.info("Upload progress %s%%: %s", percent, media_id)
-                publish_progress(media_id, percent)
+                publish_progress(media_id, percent, job_id=job_id)
 
             video_url = asyncio.run(storage.upload_video(filename, media_id, progress_callback=_on_progress))
         except Exception as exc:
             logger.error("Failed to upload video to storage: %s", exc)
-            publish_error(media_id)
+            publish_error(media_id, job_id=job_id)
             # Mark as error in DB
             with SyncSession() as session:
                 m = session.get(Media, uuid.UUID(media_id))
@@ -171,7 +172,7 @@ def save_completed_download_to_library(
                 logger.info("Media %s now available at %s", media_id, video_url)
 
         # Notify browser: upload done, library can refresh
-        publish_complete(media_id)
+        publish_complete(media_id, job_id=job_id)
 
         # ---- Step 6: Cleanup temp directory ----
         _cleanup(tmpdir)  # removes the whole temp dir and everything inside

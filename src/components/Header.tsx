@@ -16,13 +16,13 @@ export default function Header() {
         </div>
         <nav className="flex gap-1">
           <NavLink to="/" end className={({ isActive }) => `${linkBase} ${isActive ? active : ''}`}>
-            Home
+            Upload
           </NavLink>
           <NavLink to="/library" className={({ isActive }) => `${linkBase} ${isActive ? active : ''}`}>
             Library
           </NavLink>
-          <NavLink to="/downloads" className={({ isActive }) => `${linkBase} ${isActive ? active : ''}`}>
-            Downloads
+          <NavLink to="/uploads" className={({ isActive }) => `${linkBase} ${isActive ? active : ''}`}>
+            Uploads
           </NavLink>
           <NavLink to="/settings" className={({ isActive }) => `${linkBase} ${isActive ? active : ''}`}>
             Settings

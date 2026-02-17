@@ -210,6 +210,7 @@ def download_media(
                     title=title or info.get("title"),
                     ext=ext or os.path.splitext(filename)[1].lstrip("."),
                     yt_info=yt_info_subset,
+                    job_id=task_id,  # lets WebSocket events link back to this job row
                 )
             except Exception as lib_err:
                 logger.warning(f"Task {task_id}: Could not queue library save: {lib_err}")
@@ -268,6 +269,7 @@ def save_to_library_task(
     title: Optional[str] = None,
     ext: Optional[str] = None,
     yt_info: Optional[dict] = None,
+    job_id: Optional[str] = None,
 ) -> dict:
     """
     Save a completed download to the persistent media library.
@@ -284,6 +286,7 @@ def save_to_library_task(
             title=title,
             ext=ext,
             yt_info=yt_info,
+            job_id=job_id,
         )
         if media_id:
             logger.info(f"Saved to library with media_id={media_id}")

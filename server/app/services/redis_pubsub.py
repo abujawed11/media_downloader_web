@@ -2,9 +2,13 @@
 Sync Redis pub/sub helpers used by the Celery worker to publish upload-progress
 events. FastAPI's WebSocket endpoint subscribes to the same channel and streams
 the events to connected browsers in real time.
+
+Every event optionally carries ``job_id`` (the Celery download task ID) so the
+Uploads page can correlate Phase-2 cloud-upload progress back to the job row.
 """
 import json
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,43 +26,37 @@ def _get_client():
     return _redis_client
 
 
-def publish_started(media_id: str) -> None:
+def _pub(payload: dict) -> None:
+    try:
+        _get_client().publish(CHANNEL, json.dumps(payload))
+    except Exception as exc:
+        logger.debug("publish failed (non-fatal): %s", exc)
+
+
+def publish_started(media_id: str, job_id: Optional[str] = None) -> None:
     """Fired once when the processing DB record is created (upload about to begin)."""
-    try:
-        _get_client().publish(CHANNEL, json.dumps({
-            "type": "started",
-            "media_id": media_id,
-        }))
-    except Exception as exc:
-        logger.debug("publish_started failed (non-fatal): %s", exc)
+    msg = {"type": "started", "media_id": media_id}
+    if job_id:
+        msg["job_id"] = job_id
+    _pub(msg)
 
 
-def publish_progress(media_id: str, percent: int) -> None:
-    try:
-        _get_client().publish(CHANNEL, json.dumps({
-            "type": "progress",
-            "media_id": media_id,
-            "percent": percent,
-        }))
-    except Exception as exc:
-        logger.debug("publish_progress failed (non-fatal): %s", exc)
+def publish_progress(media_id: str, percent: int, job_id: Optional[str] = None) -> None:
+    msg = {"type": "progress", "media_id": media_id, "percent": percent}
+    if job_id:
+        msg["job_id"] = job_id
+    _pub(msg)
 
 
-def publish_complete(media_id: str) -> None:
-    try:
-        _get_client().publish(CHANNEL, json.dumps({
-            "type": "complete",
-            "media_id": media_id,
-        }))
-    except Exception as exc:
-        logger.debug("publish_complete failed (non-fatal): %s", exc)
+def publish_complete(media_id: str, job_id: Optional[str] = None) -> None:
+    msg = {"type": "complete", "media_id": media_id}
+    if job_id:
+        msg["job_id"] = job_id
+    _pub(msg)
 
 
-def publish_error(media_id: str) -> None:
-    try:
-        _get_client().publish(CHANNEL, json.dumps({
-            "type": "error",
-            "media_id": media_id,
-        }))
-    except Exception as exc:
-        logger.debug("publish_error failed (non-fatal): %s", exc)
+def publish_error(media_id: str, job_id: Optional[str] = None) -> None:
+    msg = {"type": "error", "media_id": media_id}
+    if job_id:
+        msg["job_id"] = job_id
+    _pub(msg)

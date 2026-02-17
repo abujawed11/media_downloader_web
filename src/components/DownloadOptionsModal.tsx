@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useModal } from '../hooks/useModal'
 import { mediaApi } from '../lib/mediaApi'
 import type { InfoResponse, FormatItem } from '../features/downloads/types'
@@ -8,7 +9,7 @@ import { BASE_URL } from '../lib/config'
 
 export default function DownloadOptionsModal() {
   const { subscribe } = useModal()
-  // ⬇️ use upsertJob from the new store
+  const navigate = useNavigate()
   const upsertJob = useDownloads(s => s.upsertJob)
 
   const [open, setOpen] = useState(false)
@@ -45,9 +46,8 @@ export default function DownloadOptionsModal() {
   const url = String(payload?.url || '')
   const platform = detectPlatformFromUrl(url)
 
-  // ⬇️ start download by creating a SERVER job and pushing it into the store
   function startDownload(fmt: FormatItem) {
-    (async () => {
+    ;(async () => {
       try {
         const job = await mediaApi.startJob({
           url,
@@ -55,12 +55,13 @@ export default function DownloadOptionsModal() {
           title: info?.title,
           ext: fmt.ext,
         })
-        // add UI-only fields (label, platform) if your DTO includes them
         upsertJob({ ...job, label: fmt.label, platform })
+        setOpen(false)
+        navigate('/uploads')  // take user to progress page immediately
       } catch (e) {
         console.error(e)
+        setOpen(false)
       }
-      setOpen(false)
     })()
   }
 
@@ -68,13 +69,13 @@ export default function DownloadOptionsModal() {
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <div className="card w-full max-w-lg max-h-[90vh] flex flex-col p-4">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-lg font-semibold">Download Options</div>
+          <div className="text-lg font-semibold">Save to Library</div>
           <button className="btn-ghost" onClick={() => setOpen(false)}>Close</button>
         </div>
 
         <div className="text-sm text-white/60 mb-3">{platform} • {url}</div>
 
-        {loading && <div className="text-white/80">Fetching formats…</div>}
+        {loading && <div className="text-white/80">Loading video info…</div>}
 
         {!loading && info && (
           <div className="grid gap-3 overflow-y-auto min-h-0">
