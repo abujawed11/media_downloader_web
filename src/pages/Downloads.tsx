@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { mediaApi } from '../lib/mediaApi'
 import { useDownloads } from '../features/downloads/downloads.slice'
 import type { DownloadJobDTO } from '../features/downloads/types'
@@ -59,7 +60,7 @@ export default function Downloads() {
     if (completedJobs.length === 0) return
 
     const confirmed = window.confirm(
-      `Clear ${completedJobs.length} completed/error downloads from history?\n\n(Files will not be deleted)`
+      `Clear ${completedJobs.length} completed/error downloads from history?\n\n(Videos remain in your Library)`
     )
     if (!confirmed) return
 
@@ -117,13 +118,11 @@ function JobRow({ job }: { job: DownloadJobDTO }) {
     }
   }
 
-  const fileHref = useMemo(() => mediaApi.fileUrl(job.id), [job.id])
-
-  const canPause = job.status === 'downloading'
+  const canPause  = job.status === 'downloading'
   const canResume = job.status === 'paused' || job.status === 'error'
   const canCancel = ['queued', 'downloading', 'paused', 'merging'].includes(job.status)
-  const canOpen = job.status === 'done'
-  const canRemove = job.status === 'done' || job.status === 'error' || job.status === 'canceled'
+  const isDone    = job.status === 'done'
+  const canRemove = isDone || job.status === 'error' || job.status === 'canceled'
 
   return (
     <div className="card p-4">
@@ -141,10 +140,10 @@ function JobRow({ job }: { job: DownloadJobDTO }) {
           {canPause && <button className="btn-ghost" onClick={pause}>Pause</button>}
           {canResume && <button className="btn-primary" onClick={resume}>Resume</button>}
           {canCancel && <button className="btn-ghost" onClick={cancel}>Cancel</button>}
-          {canOpen && (
-            <a className="btn-primary" href={fileHref} target="_blank" rel="noreferrer">
-              Open
-            </a>
+          {isDone && (
+            <Link to="/library" className="btn-primary text-sm px-4 py-1.5">
+              View in Library
+            </Link>
           )}
           {canRemove && (
             <button
