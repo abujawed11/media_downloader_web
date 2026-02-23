@@ -113,7 +113,7 @@ async def reimport():
                 thumbnail_url=thumbnail_url,
                 file_size=obj.get("Size"),
                 file_status="available",
-                added_date=obj.get("LastModified", datetime.utcnow()),
+                added_date=obj.get("LastModified", datetime.utcnow()).replace(tzinfo=None),
                 view_count=0,
                 like_count=0,
                 source_url="",  # unknown after re-import
