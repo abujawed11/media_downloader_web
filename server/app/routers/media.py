@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse, FileResponse, Response
 from urllib.parse import unquote
 import os
 import httpx
+from ..config import settings
 
 from ..models.schemas import (
     InfoRequest,
@@ -251,8 +252,16 @@ def jobs_file(job_id: str):
 @router.get("/proxy-image")
 async def proxy_image(url: str):
     try:
+        # When running inside Docker, MINIO_PUBLIC_URL (e.g. http://localhost:9000) is
+        # unreachable from containers. Replace it with the internal service URL.
+        fetch_url = url
+        if settings.MINIO_PUBLIC_URL and settings.MINIO_ENDPOINT_URL:
+            fetch_url = fetch_url.replace(
+                settings.MINIO_PUBLIC_URL.rstrip('/'),
+                settings.MINIO_ENDPOINT_URL.rstrip('/'),
+            )
         async with httpx.AsyncClient() as client:
-            response = await client.get(url)
+            response = await client.get(fetch_url)
             response.raise_for_status()
             
             return Response(

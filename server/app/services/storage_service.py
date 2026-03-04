@@ -171,7 +171,7 @@ class StorageService:
             if progress_callback:
                 progress_callback(100)
             if self.storage_type == "minio":
-                return f"{settings.MINIO_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
+                return f"{settings.MINIO_PUBLIC_URL.rstrip('/')}/{self.bucket_name}/{filename}"
             if settings.CDN_URL:
                 return f"{settings.CDN_URL.rstrip('/')}/{filename}"
             return f"{settings.S3_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
@@ -211,7 +211,7 @@ class StorageService:
                 ExtraArgs={"ContentType": "image/jpeg"},
             )
             if self.storage_type == "minio":
-                return f"{settings.MINIO_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
+                return f"{settings.MINIO_PUBLIC_URL.rstrip('/')}/{self.bucket_name}/{filename}"
             if settings.CDN_URL:
                 return f"{settings.CDN_URL.rstrip('/')}/{filename}"
             return f"{settings.S3_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
