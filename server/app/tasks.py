@@ -7,6 +7,7 @@ from typing import Optional
 import yt_dlp
 import redis
 from celery import Task
+from celery.exceptions import Ignore
 from celery.utils.log import get_task_logger
 
 from .celery_app import celery_app
@@ -225,22 +226,16 @@ def download_media(
             }
 
     except TaskPausedException:
-        logger.info(f"Task {task_id}: Paused")
+        logger.info(f"Task {task_id}: Paused, temp files preserved at {tmpdir}")
         # Don't clean up temp files on pause (for resume)
-        # Store pause state in Redis
-        from .config import settings
         redis_client.hset(f"job:{task_id}", mapping={
             'paused_tmpdir': tmpdir,
-            'paused_at': str(time.time())
+            'paused_at': str(time.time()),
         })
-
-        # Revoke the task to stop it completely
-        self.request.id
-        logger.info(f"Task {task_id}: Task paused, temp files preserved at {tmpdir}")
-
-        # Re-raise to mark task as failed with a specific message
-        # This prevents Celery from marking it as SUCCESS
-        raise Exception("Task paused by user")
+        # Set a PAUSED state so the frontend can reflect it
+        self.update_state(state='PAUSED', meta={'status': 'paused'})
+        # Ignore tells Celery to stop the task silently — no FAILURE, no traceback
+        raise Ignore()
 
     except TaskCanceledException:
         logger.info(f"Task {task_id}: Canceled")
