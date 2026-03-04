@@ -21,7 +21,7 @@ export default function App() {
   return (
     <div className="min-h-dvh text-white">
       <Header />
-      <main className="container py-8">
+      <main className="container mx-auto px-6 py-8">
         <Outlet />
       </main>
 
