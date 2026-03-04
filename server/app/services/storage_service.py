@@ -21,6 +21,24 @@ def get_active_storage_type() -> str:
     return settings.STORAGE_TYPE
 
 
+def detect_storage_type_from_url(url: str) -> str:
+    """Infer which backend a stored video/thumbnail URL belongs to.
+
+    This lets stream/download endpoints serve files from the correct backend
+    regardless of which backend is currently active in settings.
+    """
+    if not url or url.startswith("/"):
+        return "local"
+    minio_hosts = {
+        settings.MINIO_PUBLIC_URL.rstrip("/"),
+        settings.MINIO_ENDPOINT_URL.rstrip("/"),
+    }
+    for host in minio_hosts:
+        if host and url.startswith(host):
+            return "minio"
+    return "s3"
+
+
 def _slugify(text: str, max_len: int = 60) -> str:
     """Convert a title to a URL/filename-safe slug.
 
@@ -41,8 +59,8 @@ class StorageService:
     Supports both S3-compatible storage and local filesystem.
     """
 
-    def __init__(self):
-        self.storage_type = get_active_storage_type()  # "s3", "minio", or "local"
+    def __init__(self, storage_type: Optional[str] = None):
+        self.storage_type = storage_type or get_active_storage_type()  # "s3", "minio", or "local"
 
         if self.storage_type == "s3":
             import boto3

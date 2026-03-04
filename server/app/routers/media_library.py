@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from ..database import get_db
 from ..models.database import Media, Collection, CollectionItem, WatchProgress
-from ..services.storage_service import StorageService
+from ..services.storage_service import StorageService, detect_storage_type_from_url
 
 router = APIRouter(prefix="/api/library", tags=["media-library"])
 
@@ -258,7 +258,7 @@ async def stream_media(
     if not media or media.file_status != "available":
         raise HTTPException(status_code=404, detail="Media not available")
 
-    storage = StorageService()
+    storage = StorageService(storage_type=detect_storage_type_from_url(media.video_url))
 
     if storage.storage_type == "local":
         full_path = storage.get_local_path(media.video_url)
@@ -346,7 +346,7 @@ async def download_media(
     if not media or media.file_status != "available":
         raise HTTPException(status_code=404, detail="Media not available")
 
-    storage = StorageService()
+    storage = StorageService(storage_type=detect_storage_type_from_url(media.video_url))
 
     if storage.storage_type == "local":
         full_path = storage.get_local_path(media.video_url)
