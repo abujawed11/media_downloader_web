@@ -1,25 +1,25 @@
 version: '3.8'
 
 services:
-  # PostgreSQL - Media Library Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: media-downloader-postgres
-    environment:
-      POSTGRES_DB: medialib
-      POSTGRES_USER: mediauser
-      POSTGRES_PASSWORD: mediapass
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mediauser -d medialib"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - media-network
+  # PostgreSQL - Media Library Database (commented out: using host machine's PostgreSQL instead)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: media-downloader-postgres
+  #   environment:
+  #     POSTGRES_DB: medialib
+  #     POSTGRES_USER: mediauser
+  #     POSTGRES_PASSWORD: mediapass
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U mediauser -d medialib"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - media-network
 
   # Redis - Job Queue & Cache
   redis:
@@ -51,7 +51,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
+      # DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
+      - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@host.docker.internal:5432/medialib
       - LOCAL_STORAGE_PATH=/app/media_storage
     env_file:
       - ./server/.env
@@ -63,8 +64,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+      # postgres:
+      #   condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - media-network
@@ -80,7 +81,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
+      # DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
+      - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@host.docker.internal:5432/medialib
       - LOCAL_STORAGE_PATH=/app/media_storage
     env_file:
       - ./server/.env
@@ -92,8 +94,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+      # postgres:
+      #   condition: service_healthy
     command: celery -A app.celery_app worker --loglevel=info --concurrency=4
     networks:
       - media-network
@@ -119,7 +121,7 @@ services:
       - media-network
 
 volumes:
-  postgres_data:
+  # postgres_data:
   redis_data:
   downloads:
   media_storage:
