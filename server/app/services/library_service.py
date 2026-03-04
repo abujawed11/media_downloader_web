@@ -145,6 +145,7 @@ def save_completed_download_to_library(
         thumbnail_url = ""
         can_upload_thumbnail = (
             storage.storage_type == "local"
+            or storage.storage_type == "minio"
             or (storage.storage_type == "s3" and bool(settings.CDN_URL))
         )
 

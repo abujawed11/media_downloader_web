@@ -58,6 +58,14 @@ class Settings:
     S3_REGION: str = os.getenv("S3_REGION", "auto")
     CDN_URL: str = os.getenv("CDN_URL", "")
 
+    # MinIO (local S3-compatible)
+    MINIO_ENDPOINT_URL: str = os.getenv("MINIO_ENDPOINT_URL", "http://minio:9000")
+    MINIO_PUBLIC_URL: str = os.getenv("MINIO_PUBLIC_URL", "http://localhost:9000")
+    MINIO_ACCESS_KEY_ID: str = os.getenv("MINIO_ACCESS_KEY_ID", "minioadmin")
+    MINIO_SECRET_ACCESS_KEY: str = os.getenv("MINIO_SECRET_ACCESS_KEY", "minioadmin")
+    MINIO_BUCKET_NAME: str = os.getenv("MINIO_BUCKET_NAME", "medialib")
+    MINIO_REGION: str = os.getenv("MINIO_REGION", "us-east-1")
+
 
 # Create a global settings instance
 settings = Settings()

@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from .routers import media
 from .routers import media_library
 from .routers import ws
+from .routers import settings as settings_router
 from .config import settings
 import os
 import logging
@@ -65,6 +66,7 @@ app.add_middleware(
 app.include_router(media.router)
 app.include_router(media_library.router)
 app.include_router(ws.router)  # WebSocket for live upload-progress events
+app.include_router(settings_router.router, prefix="/api/settings", tags=["settings"])
 
 # ── Static file serving for local media storage ───────────────────────────── #
 _storage_path = os.path.abspath(settings.LOCAL_STORAGE_PATH)

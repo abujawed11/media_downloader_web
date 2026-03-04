@@ -7,6 +7,20 @@ from typing import Optional, Callable
 from ..config import settings
 
 
+def get_active_storage_type() -> str:
+    """Return the active storage type from Redis (falls back to settings.STORAGE_TYPE)."""
+    try:
+        import redis as _redis
+        r = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+        val = r.get("settings:storage_type")
+        if val in ("local", "s3", "minio", "r2"):
+            # normalise legacy "r2" alias
+            return "s3" if val == "r2" else val
+    except Exception:
+        pass
+    return settings.STORAGE_TYPE
+
+
 def _slugify(text: str, max_len: int = 60) -> str:
     """Convert a title to a URL/filename-safe slug.
 
@@ -28,7 +42,7 @@ class StorageService:
     """
 
     def __init__(self):
-        self.storage_type = settings.STORAGE_TYPE  # "s3" or "local"
+        self.storage_type = get_active_storage_type()  # "s3", "minio", or "local"
 
         if self.storage_type == "s3":
             import boto3
@@ -43,13 +57,69 @@ class StorageService:
                     signature_version="s3v4",
                     retries={"max_attempts": 3, "mode": "standard"},
                     connect_timeout=30,
-                    read_timeout=300,  # large file uploads need longer timeout
+                    read_timeout=300,
                 ),
                 region_name=settings.S3_REGION,
                 use_ssl=True,
                 verify=True,
             )
             self.bucket_name = settings.S3_BUCKET_NAME
+        elif self.storage_type == "minio":
+            import boto3
+            import json
+            from botocore.config import Config
+
+            _minio_cfg = Config(
+                signature_version="s3v4",
+                retries={"max_attempts": 3, "mode": "standard"},
+                connect_timeout=30,
+                read_timeout=300,
+            )
+            # Internal client — used for all actual S3 API calls (upload, delete, head)
+            self.s3_client = boto3.client(
+                "s3",
+                endpoint_url=settings.MINIO_ENDPOINT_URL,
+                aws_access_key_id=settings.MINIO_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.MINIO_SECRET_ACCESS_KEY,
+                config=_minio_cfg,
+                region_name=settings.MINIO_REGION,
+                use_ssl=False,
+            )
+            # Public client — endpoint uses the browser-accessible URL so that
+            # presigned URLs it generates are reachable by the browser directly.
+            self.s3_public_client = boto3.client(
+                "s3",
+                endpoint_url=settings.MINIO_PUBLIC_URL,
+                aws_access_key_id=settings.MINIO_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.MINIO_SECRET_ACCESS_KEY,
+                config=_minio_cfg,
+                region_name=settings.MINIO_REGION,
+                use_ssl=False,
+            )
+            self.bucket_name = settings.MINIO_BUCKET_NAME
+            # Ensure bucket exists and is publicly readable (thumbnails served directly)
+            try:
+                self.s3_client.head_bucket(Bucket=self.bucket_name)
+            except Exception:
+                try:
+                    self.s3_client.create_bucket(Bucket=self.bucket_name)
+                except Exception:
+                    pass
+            try:
+                public_policy = json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{self.bucket_name}/*"],
+                    }],
+                })
+                self.s3_client.put_bucket_policy(
+                    Bucket=self.bucket_name, Policy=public_policy
+                )
+            except Exception:
+                pass
         else:
             self.local_storage_path = os.path.abspath(settings.LOCAL_STORAGE_PATH)
             os.makedirs(os.path.join(self.local_storage_path, "videos"), exist_ok=True)
@@ -75,7 +145,7 @@ class StorageService:
         object_name = f"{media_id}_{slug}" if slug else media_id
         filename = f"videos/{object_name}{ext}"
 
-        if self.storage_type == "s3":
+        if self.storage_type in ("s3", "minio"):
             file_size = os.path.getsize(local_file_path)
             bytes_done = 0
             last_reported = [-1]  # mutable closure cell
@@ -100,6 +170,8 @@ class StorageService:
             )
             if progress_callback:
                 progress_callback(100)
+            if self.storage_type == "minio":
+                return f"{settings.MINIO_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
             if settings.CDN_URL:
                 return f"{settings.CDN_URL.rstrip('/')}/{filename}"
             return f"{settings.S3_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
@@ -131,13 +203,15 @@ class StorageService:
         """Upload thumbnail to storage and return the URL/path."""
         filename = f"thumbnails/{media_id}.jpg"
 
-        if self.storage_type == "s3":
+        if self.storage_type in ("s3", "minio"):
             self.s3_client.upload_file(
                 local_file_path,
                 self.bucket_name,
                 filename,
                 ExtraArgs={"ContentType": "image/jpeg"},
             )
+            if self.storage_type == "minio":
+                return f"{settings.MINIO_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
             if settings.CDN_URL:
                 return f"{settings.CDN_URL.rstrip('/')}/{filename}"
             return f"{settings.S3_ENDPOINT_URL.rstrip('/')}/{self.bucket_name}/{filename}"
@@ -151,7 +225,7 @@ class StorageService:
         if not file_url:
             return
 
-        if self.storage_type == "s3":
+        if self.storage_type in ("s3", "minio"):
             try:
                 key = self._extract_key(file_url)
                 self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
@@ -183,14 +257,17 @@ class StorageService:
         sends the file as a download rather than streaming it inline.
         download_filename overrides the filename shown in the browser's save dialog.
         """
-        if self.storage_type == "s3":
+        if self.storage_type in ("s3", "minio"):
             key = self._extract_key(file_url)
             params: dict = {"Bucket": self.bucket_name, "Key": key}
             if force_download:
                 fname = download_filename or key.split("/")[-1]
                 params["ResponseContentDisposition"] = f'attachment; filename="{fname}"'
                 params["ResponseContentType"] = "application/octet-stream"
-            return self.s3_client.generate_presigned_url(
+            # For MinIO use the public client so the presigned URL contains the
+            # browser-accessible hostname (MINIO_PUBLIC_URL) not the internal one.
+            client = self.s3_public_client if self.storage_type == "minio" else self.s3_client
+            return client.generate_presigned_url(
                 "get_object",
                 Params=params,
                 ExpiresIn=expiration,

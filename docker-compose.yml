@@ -54,6 +54,7 @@ services:
       # DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
       - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@host.docker.internal:5432/medialib
       - LOCAL_STORAGE_PATH=/app/media_storage
+      - MINIO_ENDPOINT_URL=http://minio:9000
     env_file:
       - ./server/.env
     volumes:
@@ -84,6 +85,7 @@ services:
       # DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@postgres:5432/medialib
       - DATABASE_URL=postgresql+asyncpg://mediauser:mediapass@host.docker.internal:5432/medialib
       - LOCAL_STORAGE_PATH=/app/media_storage
+      - MINIO_ENDPOINT_URL=http://minio:9000
     env_file:
       - ./server/.env
     volumes:
@@ -97,6 +99,27 @@ services:
       # postgres:
       #   condition: service_healthy
     command: celery -A app.celery_app worker --loglevel=info --concurrency=4
+    networks:
+      - media-network
+
+  # MinIO - Local S3-compatible object storage
+  minio:
+    image: minio/minio
+    container_name: media-downloader-minio
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - media-network
 
@@ -125,6 +148,7 @@ volumes:
   redis_data:
   downloads:
   media_storage:
+  minio_data:
 
 networks:
   media-network:
