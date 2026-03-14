@@ -21,7 +21,8 @@
       "Bash(python:*)",
       "Bash(\"D:/react/media-downloader-web/server/requirements.txt\":*)",
       "Bash(npm install:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft, ExternalLink, Download, Calendar, User, Tag,
-  Clock, Eye, Film, Loader2
+  Clock, Eye, Film, Loader2, Minimize2
 } from 'lucide-react'
 import {
   fetchMediaItem,
@@ -14,6 +14,7 @@ import {
   platformLabel,
 } from '../lib/libraryApi'
 import { BASE_URL } from '../lib/config'
+import { usePlayer } from '../context/PlayerContext'
 
 function resolveThumbnail(url?: string) {
   if (!url) return undefined
@@ -30,6 +31,7 @@ export default function Watch() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [videoError, setVideoError] = useState<string | null>(null)
+  const { openPlayer, minimize, isMini, syncTime, syncPlaying, getTime, mediaId: contextMediaId } = usePlayer()
 
   const { data: media, isLoading, isError } = useQuery({
     queryKey: ['media', id],
@@ -43,20 +45,63 @@ export default function Watch() {
     enabled: !!id,
   })
 
-  // Restore saved position once video metadata is loaded
+  // Register with PlayerContext once media is loaded
+  useEffect(() => {
+    if (!media || !id) return
+    const streamUrl = `${BASE_URL}/api/library/${id}/stream`
+    openPlayer(id, media.title, streamUrl)
+  }, [media, id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Minimize handler: pause main video, sync exact time, then hand off to mini player
+  const handleMinimize = useCallback(() => {
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      syncTime(video.currentTime)
+    }
+    minimize()
+    navigate(-1)   // navigate away immediately so Watch unmounts before MiniPlayer plays
+  }, [minimize, navigate, syncTime])
+
+  // Keep PlayerContext time in sync (for mini player to resume from correct position)
   useEffect(() => {
     const video = videoRef.current
-    if (!video || !savedProgress || savedProgress.current_time <= 0) return
+    if (!video) return
+    const onTime = () => syncTime(video.currentTime)
+    const onPlay = () => syncPlaying(true)
+    const onPause = () => syncPlaying(false)
+    video.addEventListener('timeupdate', onTime)
+    video.addEventListener('play', onPlay)
+    video.addEventListener('pause', onPause)
+    return () => {
+      video.removeEventListener('timeupdate', onTime)
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', onPause)
+    }
+  }, [syncTime, syncPlaying])
+
+  // Restore saved position once video metadata is loaded.
+  // Priority: mini-player context time (most recent) > API saved progress
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !media) return
 
     const onLoaded = () => {
-      // Don't restore if almost finished (>95%)
-      if (savedProgress.progress < 95 && savedProgress.current_time > 3) {
+      // If this video was just playing in the mini player, resume from exact position
+      const miniTime = contextMediaId === id ? getTime() : 0
+      if (miniTime > 3) {
+        video.currentTime = miniTime
+        video.play().catch(() => {})
+        return
+      }
+      // Otherwise fall back to API-saved progress
+      if (savedProgress && savedProgress.progress < 95 && savedProgress.current_time > 3) {
         video.currentTime = savedProgress.current_time
       }
     }
     video.addEventListener('loadedmetadata', onLoaded)
     return () => video.removeEventListener('loadedmetadata', onLoaded)
-  }, [savedProgress, media])
+  }, [savedProgress, media]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Periodically save watch progress
   const saveProgress = useCallback(() => {
@@ -110,7 +155,7 @@ export default function Watch() {
       </button>
 
       {/* ── Video player ─────────────────────────────────────────────────── */}
-      <div className="relative rounded-xl overflow-hidden bg-black shadow-2xl aspect-video">
+      <div className="relative rounded-xl overflow-hidden bg-black shadow-2xl aspect-video group/player">
         {videoError ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-400">
             <Film className="size-12 text-zinc-600" />
@@ -120,15 +165,24 @@ export default function Watch() {
             </a>
           </div>
         ) : (
-          <video
-            ref={videoRef}
-            src={streamUrl}
-            controls
-            className="w-full h-full"
-            onError={() => setVideoError('Failed to load video. The file may have been removed.')}
-            poster={resolveThumbnail(media.thumbnail_url)}
-            preload="metadata"
-          />
+          <>
+            <video
+              ref={videoRef}
+              src={streamUrl}
+              controls
+              className="w-full h-full"
+              onError={() => setVideoError('Failed to load video. The file may have been removed.')}
+              poster={resolveThumbnail(media.thumbnail_url)}
+              preload="metadata"
+            />
+            <button
+              onClick={handleMinimize}
+              className="absolute top-3 right-3 size-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/player:opacity-100 hover:bg-black/80 transition-all z-10"
+              title="Minimize - keep playing while you browse"
+            >
+              <Minimize2 className="size-4 text-white" />
+            </button>
+          </>
         )}
       </div>
 
