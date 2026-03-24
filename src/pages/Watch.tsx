@@ -31,7 +31,7 @@ export default function Watch() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [videoError, setVideoError] = useState<string | null>(null)
-  const { openPlayer, minimize, isMini, syncTime, syncPlaying, getTime, mediaId: contextMediaId } = usePlayer()
+  const { openPlayer, minimize, isMini, syncTime, syncPlaying, getTime, syncVolume, getVolume, mediaId: contextMediaId } = usePlayer()
 
   const { data: media, isLoading, isError } = useQuery({
     queryKey: ['media', id],
@@ -63,22 +63,38 @@ export default function Watch() {
     navigate(-1)   // navigate away immediately so Watch unmounts before MiniPlayer plays
   }, [minimize, navigate, syncTime])
 
-  // Keep PlayerContext time in sync (for mini player to resume from correct position)
+  // Keep PlayerContext time + volume in sync.
+  // Must depend on `media` so it runs AFTER the <video> element renders
+  // (videoRef.current is null during the loading state).
   useEffect(() => {
+    if (!media) return
     const video = videoRef.current
     if (!video) return
     const onTime = () => syncTime(video.currentTime)
     const onPlay = () => syncPlaying(true)
     const onPause = () => syncPlaying(false)
+    const onVolume = () => syncVolume(video.volume)
     video.addEventListener('timeupdate', onTime)
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
+    video.addEventListener('volumechange', onVolume)
     return () => {
       video.removeEventListener('timeupdate', onTime)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('volumechange', onVolume)
     }
-  }, [syncTime, syncPlaying])
+  }, [media, syncTime, syncPlaying, syncVolume])
+
+  // Apply saved volume as soon as the video element is in the DOM.
+  // Runs once when media loads (video element renders). Separate from the
+  // loadedmetadata effect so it is never accidentally re-run by savedProgress loading.
+  useEffect(() => {
+    if (!media) return
+    const video = videoRef.current
+    if (!video) return
+    video.volume = getVolume()
+  }, [media]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore saved position once video metadata is loaded.
   // Priority: mini-player context time (most recent) > API saved progress

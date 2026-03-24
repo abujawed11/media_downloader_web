@@ -5,7 +5,7 @@ import { usePlayer } from '../context/PlayerContext'
 
 export default function MiniPlayer() {
   const navigate = useNavigate()
-  const { mediaId, title, streamUrl, currentTime, isMini, restore, close, syncTime, syncPlaying } =
+  const { mediaId, title, streamUrl, currentTime, isMini, restore, close, syncTime, syncPlaying, syncVolume, getVolume } =
     usePlayer()
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -43,6 +43,7 @@ export default function MiniPlayer() {
       const doPlay = () => {
         if (cancelled) return
         if (t > 0) v.currentTime = t
+        v.volume = getVolume()
         v.play().catch(() => {})
       }
       if (v.readyState >= 1) {
@@ -57,7 +58,7 @@ export default function MiniPlayer() {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [isMini]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync time & playing state up to context every second
+  // Sync time, playing state, and volume up to context
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
@@ -65,16 +66,19 @@ export default function MiniPlayer() {
     const onTimeUpdate = () => syncTime(video.currentTime)
     const onPlay = () => { setPlaying(true); syncPlaying(true) }
     const onPause = () => { setPlaying(false); syncPlaying(false) }
+    const onVolume = () => syncVolume(video.volume)
 
     video.addEventListener('timeupdate', onTimeUpdate)
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
+    video.addEventListener('volumechange', onVolume)
     return () => {
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('volumechange', onVolume)
     }
-  }, [syncTime, syncPlaying])
+  }, [syncTime, syncPlaying, syncVolume])
 
   // Pause video when mini player hides
   useEffect(() => {
