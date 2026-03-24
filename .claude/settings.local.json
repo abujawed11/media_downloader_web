@@ -22,7 +22,8 @@
       "Bash(\"D:/react/media-downloader-web/server/requirements.txt\":*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(docker compose:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,9 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Play, Eye, Trash2 } from 'lucide-react'
+import { Play, Eye, Trash2, Download, HardDrive, Cloud, Server } from 'lucide-react'
 import type { MediaItem } from '../lib/libraryApi'
 import { formatDuration, formatFileSize, platformLabel, platformColor } from '../lib/libraryApi'
 import { BASE_URL } from '../lib/config'
+
+function storageInfo(url: string): { label: string; color: string; Icon: typeof HardDrive } {
+  if (!url || url.startsWith('/')) return { label: 'Local', color: 'bg-emerald-700/80', Icon: HardDrive }
+  if (/minio|:9000/.test(url))    return { label: 'MinIO', color: 'bg-orange-700/80',  Icon: Server }
+  return                                   { label: 'S3',    color: 'bg-blue-700/80',    Icon: Cloud }
+}
 
 interface Props {
   item: MediaItem
@@ -27,6 +33,8 @@ function resolveThumbnail(url?: string): string {
 export default function MediaCard({ item, watchProgress, onDelete }: Props) {
   const navigate = useNavigate()
   const [imgError, setImgError] = useState(false)
+  const downloadUrl = `${BASE_URL}/api/library/${item.id}/download`
+  const storage = storageInfo(item.video_url)
 
   const thumbnailSrc = !imgError ? resolveThumbnail(item.thumbnail_url) : ''
 
@@ -90,18 +98,38 @@ export default function MediaCard({ item, watchProgress, onDelete }: Props) {
         </h3>
 
         <div className="flex items-center gap-2 mt-auto pt-2 text-xs text-zinc-400 flex-wrap">
+          {/* Storage location badge */}
+          <span className={`flex items-center gap-1 ${storage.color} text-white px-1.5 py-0.5 rounded text-[10px] font-medium`}>
+            <storage.Icon className="size-2.5" />
+            {storage.label}
+          </span>
+
           {item.resolution && (
             <span className="bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded text-[10px] font-mono">
               {item.resolution}
             </span>
           )}
           {item.file_size && <span>{formatFileSize(item.file_size)}</span>}
-          {item.view_count > 0 && (
-            <span className="flex items-center gap-1 ml-auto">
-              <Eye className="size-3" />
-              {item.view_count}
-            </span>
-          )}
+
+          <div className="flex items-center gap-2 ml-auto">
+            {item.view_count > 0 && (
+              <span className="flex items-center gap-1">
+                <Eye className="size-3" />
+                {item.view_count}
+              </span>
+            )}
+            <a
+              href={downloadUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="Download file"
+              className="flex items-center justify-center size-6 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white transition-colors"
+            >
+              <Download className="size-3.5" />
+            </a>
+          </div>
         </div>
 
         {item.uploader && (
