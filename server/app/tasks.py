@@ -256,8 +256,14 @@ def download_media(
         raise
 
 
-@celery_app.task(name="app.tasks.save_to_library")
+@celery_app.task(
+    bind=True,
+    name="app.tasks.save_to_library",
+    max_retries=5,
+    default_retry_delay=15,  # first retry after 15s; subsequent use exponential backoff
+)
 def save_to_library_task(
+    self,
     filename: str,
     tmpdir: str,
     url: str,
@@ -270,8 +276,12 @@ def save_to_library_task(
     Save a completed download to the persistent media library.
     Moves the file to permanent storage, generates a thumbnail,
     and creates a Media record in PostgreSQL.
+
+    Retries up to 5 times with exponential backoff so that a slow
+    PostgreSQL startup (common after a system reboot) doesn't silently
+    swallow the library record.
     """
-    logger.info(f"Saving to library: {filename}")
+    logger.info(f"Saving to library: {filename} (attempt {self.request.retries + 1})")
     try:
         from .services.library_service import save_completed_download_to_library
         media_id = save_completed_download_to_library(
@@ -290,5 +300,11 @@ def save_to_library_task(
             logger.warning("Library save returned no media_id")
             return {"status": "skipped"}
     except Exception as exc:
-        logger.exception(f"save_to_library_task failed: {exc}")
-        return {"status": "error", "error": str(exc)}
+        logger.exception(f"save_to_library_task failed (attempt {self.request.retries + 1}): {exc}")
+        # Exponential backoff: 15s, 30s, 60s, 120s, 240s
+        retry_delay = 15 * (2 ** self.request.retries)
+        try:
+            raise self.retry(exc=exc, countdown=retry_delay)
+        except self.MaxRetriesExceededError:
+            logger.error(f"save_to_library_task permanently failed after {self.max_retries} retries: {exc}")
+            return {"status": "error", "error": str(exc)}

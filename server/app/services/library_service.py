@@ -182,7 +182,8 @@ def save_completed_download_to_library(
 
     except Exception as exc:
         logger.exception("save_completed_download_to_library failed: %s", exc)
-        return None
+        # Re-raise so the Celery task can apply retry logic (e.g. DB not ready on boot)
+        raise
 
 
 # ---- Helpers ----
