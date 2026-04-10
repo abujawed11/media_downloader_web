@@ -59,8 +59,8 @@ services:
       - ./server/.env
     volumes:
       - ./server:/app
-      - downloads:/app/downloads
-      - media_storage:/app/media_storage
+      - D:/docker-data/downloads:/app/downloads
+      - D:/docker-data/media_storage:/app/media_storage
       - ./server/cookies:/app/cookies
     depends_on:
       redis:
@@ -90,8 +90,8 @@ services:
       - ./server/.env
     volumes:
       - ./server:/app
-      - downloads:/app/downloads
-      - media_storage:/app/media_storage
+      - D:/docker-data/downloads:/app/downloads
+      - D:/docker-data/media_storage:/app/media_storage
       - ./server/cookies:/app/cookies
     depends_on:
       redis:
@@ -146,8 +146,6 @@ services:
 volumes:
   # postgres_data:
   redis_data:
-  downloads:
-  media_storage:
 
 networks:
   media-network:
