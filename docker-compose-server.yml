@@ -38,14 +38,33 @@ services:
     networks:
       - media-network
 
+  # Frontend + Nginx Reverse Proxy
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        - VITE_API_BASE_URL=https://media.seedrlite.in
+    container_name: media-downloader-frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - media-network
+
   # FastAPI Backend
   api:
     build:
       context: ./server
       dockerfile: Dockerfile
     container_name: media-downloader-api
-    ports:
-      - "8000:8000"
+    # Port 8000 not exposed publicly — nginx handles all external traffic
+    # Uncomment below only for direct debugging:
+    # ports:
+    #   - "8000:8000"
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
@@ -54,7 +73,7 @@ services:
       - LOCAL_STORAGE_PATH=/app/media_storage
       - MINIO_ENDPOINT_URL=http://minio:9000
     env_file:
-      - ./server/.env
+      - ./server/.env.prod
     volumes:
       - ./downloads:/app/downloads
       - ./media_storage:/app/media_storage
@@ -82,7 +101,7 @@ services:
       - LOCAL_STORAGE_PATH=/app/media_storage
       - MINIO_ENDPOINT_URL=http://minio:9000
     env_file:
-      - ./server/.env
+      - ./server/.env.prod
     volumes:
       - ./downloads:/app/downloads
       - ./media_storage:/app/media_storage
@@ -129,7 +148,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
     env_file:
-      - ./server/.env
+      - ./server/.env.prod
     depends_on:
       - redis
       - worker
