@@ -16,6 +16,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Always use the latest yt-dlp to stay current with platform changes
+RUN pip install --no-cache-dir -U yt-dlp
+
 # Copy application code
 COPY . .
 

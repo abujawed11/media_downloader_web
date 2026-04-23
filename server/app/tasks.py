@@ -104,6 +104,14 @@ def download_media(
         if cookies:
             ydl_opts["cookiefile"] = cookies
 
+        def _run_download(use_cookies: bool):
+            opts = dict(ydl_opts)
+            if not use_cookies:
+                opts.pop("cookiefile", None)
+            opts["progress_hooks"] = [progress_hook]
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(url, download=True)
+
         # Progress hook to update task state
         def progress_hook(d):
             # Check for pause/cancel flags in Redis
@@ -153,77 +161,81 @@ def download_media(
                 )
                 logger.info(f"Task {task_id}: Download finished, merging...")
 
-        ydl_opts["progress_hooks"] = [progress_hook]
+        # Download the media (retry without cookies if stale cookies cause a parse failure)
+        try:
+            info = _run_download(use_cookies=True)
+        except yt_dlp.utils.DownloadError as e:
+            if cookies and "Cannot parse data" in str(e):
+                logger.warning(f"Task {task_id}: Cookie-based download failed, retrying without cookies")
+                info = _run_download(use_cookies=False)
+            else:
+                raise
 
-        # Download the media
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        # Get the downloaded file path
+        filename = None
+        if isinstance(info, dict):
+            filename = info.get("_filename")
 
-            # Get the downloaded file path
-            filename = None
-            if isinstance(info, dict):
-                filename = info.get("_filename")
+        # If filename not found, search in temp directory
+        if not filename or not os.path.isfile(filename):
+            import glob
+            patterns = ['*.mp4', '*.mkv', '*.webm', '*.avi', '*.mov', '*.m4a', '*.mp3']
+            for pattern in patterns:
+                files = glob.glob(os.path.join(tmpdir, pattern))
+                if files:
+                    filename = max(files, key=os.path.getsize)
+                    break
 
-            # If filename not found, search in temp directory
-            if not filename or not os.path.isfile(filename):
-                import glob
-                patterns = ['*.mp4', '*.mkv', '*.webm', '*.avi', '*.mov', '*.m4a', '*.mp3']
-                for pattern in patterns:
-                    files = glob.glob(os.path.join(tmpdir, pattern))
-                    if files:
-                        filename = max(files, key=os.path.getsize)
-                        break
+        if not filename or not os.path.isfile(filename):
+            raise RuntimeError("Download completed but file not found")
 
-            if not filename or not os.path.isfile(filename):
-                raise RuntimeError("Download completed but file not found")
+        file_size = os.path.getsize(filename)
 
-            file_size = os.path.getsize(filename)
+        logger.info(f"Task {task_id}: Download complete - {filename} ({file_size} bytes)")
+        logger.info(f"Task {task_id}: File location - {filename}")
+        logger.info(f"Task {task_id}: Temp directory - {tmpdir}")
 
-            logger.info(f"Task {task_id}: Download complete - {filename} ({file_size} bytes)")
-            logger.info(f"Task {task_id}: File location - {filename}")
-            logger.info(f"Task {task_id}: Temp directory - {tmpdir}")
+        # Gather lightweight yt-dlp metadata for library record
+        yt_info_subset = {
+            "id": info.get("id"),
+            "title": info.get("title"),
+            "description": info.get("description"),
+            "duration": info.get("duration"),
+            "uploader": info.get("uploader"),
+            "channel": info.get("channel"),
+            "upload_date": info.get("upload_date"),
+            "thumbnail": info.get("thumbnail"),
+            "thumbnails": [
+                {"url": t.get("url"), "width": t.get("width"), "height": t.get("height")}
+                for t in (info.get("thumbnails") or [])[-5:]  # Last 5 thumbnails only
+            ],
+            "tags": (info.get("tags") or [])[:20],  # Limit tags
+            "ext": info.get("ext"),
+            "height": info.get("height"),
+        }
 
-            # Gather lightweight yt-dlp metadata for library record
-            yt_info_subset = {
-                "id": info.get("id"),
-                "title": info.get("title"),
-                "description": info.get("description"),
-                "duration": info.get("duration"),
-                "uploader": info.get("uploader"),
-                "channel": info.get("channel"),
-                "upload_date": info.get("upload_date"),
-                "thumbnail": info.get("thumbnail"),
-                "thumbnails": [
-                    {"url": t.get("url"), "width": t.get("width"), "height": t.get("height")}
-                    for t in (info.get("thumbnails") or [])[-5:]  # Last 5 thumbnails only
-                ],
-                "tags": (info.get("tags") or [])[:20],  # Limit tags
-                "ext": info.get("ext"),
-                "height": info.get("height"),
-            }
+        # Trigger library save in background (non-blocking)
+        try:
+            save_to_library_task.delay(
+                filename=filename,
+                tmpdir=tmpdir,
+                url=url,
+                title=title or info.get("title"),
+                ext=ext or os.path.splitext(filename)[1].lstrip("."),
+                yt_info=yt_info_subset,
+                job_id=task_id,  # lets WebSocket events link back to this job row
+            )
+        except Exception as lib_err:
+            logger.warning(f"Task {task_id}: Could not queue library save: {lib_err}")
 
-            # Trigger library save in background (non-blocking)
-            try:
-                save_to_library_task.delay(
-                    filename=filename,
-                    tmpdir=tmpdir,
-                    url=url,
-                    title=title or info.get("title"),
-                    ext=ext or os.path.splitext(filename)[1].lstrip("."),
-                    yt_info=yt_info_subset,
-                    job_id=task_id,  # lets WebSocket events link back to this job row
-                )
-            except Exception as lib_err:
-                logger.warning(f"Task {task_id}: Could not queue library save: {lib_err}")
-
-            return {
-                'status': 'done',
-                'filename': filename,
-                'tmpdir': tmpdir,
-                'title': title or info.get('title', 'Unknown'),
-                'ext': ext or os.path.splitext(filename)[1].lstrip('.'),
-                'file_size': file_size,
-            }
+        return {
+            'status': 'done',
+            'filename': filename,
+            'tmpdir': tmpdir,
+            'title': title or info.get('title', 'Unknown'),
+            'ext': ext or os.path.splitext(filename)[1].lstrip('.'),
+            'file_size': file_size,
+        }
 
     except TaskPausedException:
         logger.info(f"Task {task_id}: Paused, temp files preserved at {tmpdir}")

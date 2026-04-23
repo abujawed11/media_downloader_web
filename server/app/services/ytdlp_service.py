@@ -422,6 +422,7 @@ def _base_ydl_opts(skip_download: bool = True, url: str = None) -> Dict:
 def extract_info(url: str) -> Dict:
     """
     Extract metadata for a single video (fast), even if the original URL was a playlist-y watch URL.
+    Falls back to cookie-less extraction if cookies cause a parse failure (e.g. expired session).
     """
     import time
     start_time = time.time()
@@ -429,15 +430,26 @@ def extract_info(url: str) -> Dict:
     # Normalize YT URLs so &list=... doesn't slow things down
     url = _normalize_youtube_url(url)
 
-    ydl_opts = _base_ydl_opts(skip_download=True, url=url)
     cookies = _cookies_for(url)
-    if cookies:
-        ydl_opts["cookiefile"] = cookies
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        result = ydl.extract_info(url, download=False)
+    def _try_extract(use_cookies: bool) -> Dict:
+        ydl_opts = _base_ydl_opts(skip_download=True, url=url)
+        if use_cookies and cookies:
+            ydl_opts["cookiefile"] = cookies
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(url, download=False)
+
+    try:
+        result = _try_extract(use_cookies=True)
         print(f"[PERF] yt-dlp extraction took {time.time() - start_time:.2f} seconds")
         return result
+    except yt_dlp.utils.DownloadError as e:
+        if cookies and "Cannot parse data" in str(e):
+            print(f"[WARN] Cookie-based extraction failed ({e}). Retrying without cookies...")
+            result = _try_extract(use_cookies=False)
+            print(f"[PERF] yt-dlp extraction (no-cookie retry) took {time.time() - start_time:.2f} seconds")
+            return result
+        raise
 
 
 # def download_to_temp(url: str, format_string: str) -> str:
@@ -539,18 +551,18 @@ def download_to_temp(url: str, format_string: str) -> str:
     # Normalize first so we don't accidentally start a full playlist download
     url = _normalize_youtube_url(url)
 
-    def run_with_format(fmt_expr: str) -> Optional[str]:
+    cookies = _cookies_for(url)
+
+    def run_with_format(fmt_expr: str, use_cookies: bool = True) -> Optional[str]:
         ydl_opts = _base_ydl_opts(skip_download=False, url=url)
         ydl_opts.update({
             "format": fmt_expr,
             "outtmpl": outtmpl,
             "noprogress": True,
             "quiet": True,
-            # Prefer mp4 when a merge happens
             "merge_output_format": "mp4",
         })
-        cookies = _cookies_for(url)
-        if cookies:
+        if use_cookies and cookies:
             ydl_opts["cookiefile"] = cookies
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -566,14 +578,22 @@ def download_to_temp(url: str, format_string: str) -> str:
                     return p
         return None
 
-    # 1) Try the user-provided expression first
+    # 1) Try the user-provided expression first (with cookies if available)
     try:
-        p = run_with_format(format_string)
+        p = run_with_format(format_string, use_cookies=True)
         if p:
             return p
     except yt_dlp.utils.DownloadError as e:
-        # Known: “Requested format is not available …”
-        print(f"[WARN] primary format failed: {e}")
+        if cookies and "Cannot parse data" in str(e):
+            print(f"[WARN] Cookie-based download failed, retrying without cookies: {e}")
+            try:
+                p = run_with_format(format_string, use_cookies=False)
+                if p:
+                    return p
+            except yt_dlp.utils.DownloadError as e2:
+                print(f"[WARN] No-cookie retry also failed: {e2}")
+        else:
+            print(f"[WARN] primary format failed: {e}")
 
     # 2) Fallbacks (very resilient)
     for fallback in [
